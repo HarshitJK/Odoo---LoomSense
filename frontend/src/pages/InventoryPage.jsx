@@ -1,14 +1,15 @@
-import { useState, useEffect } from "react";
-import { Package, AlertTriangle, DollarSign, WifiOff } from "lucide-react";
+import { Package, AlertTriangle, DollarSign } from "lucide-react";
 
 import PageHeader from "../components/common/PageHeader.jsx";
+import ApiErrorBanner from "../components/common/ApiErrorBanner.jsx";
+import MockBadge from "../components/common/MockBadge.jsx";
 import OrderReadinessChecker from "../components/orders/OrderReadinessChecker.jsx";
 
-// Fallback when API is unreachable
+// Only used when VITE_USE_MOCKS=true
 import { inventory as mockInventory } from "../mocks/inventory.js";
+import useApi from "../hooks/useApi.js";
 
 import { formatCurrency } from "../utils/formatCurrency.js";
-import client from "../api/client.js"; // axios, base URL from VITE_API_URL
 
 // A batch is "low stock" when below 300 kg.
 // The API already returns a computed `lowStock` boolean — we use that when available,
@@ -106,50 +107,17 @@ function StockTable({ batches }) {
   );
 }
 
-function OfflineBanner() {
-  return (
-    <div className="flex items-center gap-2 rounded-lg bg-slate-100 border border-slate-200 px-4 py-2 text-xs text-slate-500">
-      <WifiOff size={14} />
-      Backend offline — showing mock data. Start the API server at http://localhost:8000.
-    </div>
-  );
-}
-
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function InventoryPage() {
-  // Inventory data from GET /api/inventory
-  const [inventory, setInventory] = useState([]);
-  const [loading, setLoading]     = useState(true);
-  const [isOffline, setOffline]   = useState(false);
-
-  useEffect(() => {
-    // GET /api/inventory — returns batches with computed `lowStock` boolean
-    client.get("/api/inventory")
-      .then((res) => {
-        setInventory(res.data);
-        setOffline(false);
-      })
-      .catch(() => {
-        // Backend not reachable — fall back to local mock
-        setInventory(mockInventory);
-        setOffline(true);
-      })
-      .finally(() => setLoading(false));
-  }, []);
+  // GET /api/inventory — returns batches with a computed `lowStock` boolean
+  const { data, loading, error, reload } = useApi("/api/inventory", { mock: mockInventory });
+  const inventory = data ?? [];
 
   // Derived summary numbers
   const totalStockKg   = inventory.reduce((sum, b) => sum + b.quantityKg, 0);
   const totalValue     = inventory.reduce((sum, b) => sum + b.quantityKg * b.costPerKg, 0);
   const lowStockCount  = inventory.filter(isLowStock).length;
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64 text-slate-400 text-sm">
-        Loading inventory…
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">
@@ -157,9 +125,21 @@ export default function InventoryPage() {
         title="Raw Material Inventory"
         subtitle="Yarn stock levels, values, and order readiness checker"
       />
+      <MockBadge />
 
-      {isOffline && <OfflineBanner />}
+      <ApiErrorBanner error={error} onRetry={reload} />
 
+      {loading && !data && (
+        <div className="flex items-center justify-center h-64 text-slate-400 text-sm">Loading inventory…</div>
+      )}
+
+      {data && data.length === 0 && (
+        <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-400">
+          No inventory batches yet.
+        </div>
+      )}
+
+      {data && (<>
       {/* ── Summary cards ── */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <SummaryCard
@@ -191,6 +171,7 @@ export default function InventoryPage() {
       {/* ── Readiness checker — passes live inventory as prop ── */}
       {/* The Lead can later replace this prop with data from GET /api/orders/{id}/readiness */}
       <OrderReadinessChecker inventory={inventory} />
+      </>)}
     </div>
   );
 }

@@ -1,30 +1,30 @@
 import { useState, useEffect } from "react";
-import { Activity, Pause, AlertOctagon, Gauge, WifiOff } from "lucide-react";
+import { Activity, Pause, AlertOctagon, Gauge, Radio } from "lucide-react";
 
 import PageHeader from "../components/common/PageHeader.jsx";
+import ApiErrorBanner from "../components/common/ApiErrorBanner.jsx";
+import MockBadge from "../components/common/MockBadge.jsx";
 import MachineCard from "../components/machines/MachineCard.jsx";
 import MachineDetailPanel from "../components/machines/MachineDetailPanel.jsx";
 
-// Fallback when API is unreachable
+// Only used when VITE_USE_MOCKS=true
 import { machines as mockMachines } from "../mocks/machines.js";
-import client from "../api/client.js"; // axios, base URL from VITE_API_URL
+import useApi from "../hooks/useApi.js";
+import useMachineSocket from "../hooks/useMachineSocket.js";
+import { USE_MOCKS } from "../config.js";
 
-// ─── Live update constant ─────────────────────────────────────────────────────
-const TICK_INTERVAL_MS = 3000; // simulated production tick every 3 seconds
+const TICK_INTERVAL_MS = 3000; // mock mode only: fake production tick every 3 seconds
 
 // ─── API → component shape normaliser ────────────────────────────────────────
-// The API returns `currentOrderId` (matches MongoDB schema in context.md).
-// Our MachineCard/MachineDetailPanel components read `orderId`.
-// We also add default values for fields the API doesn't return yet
-// (runtimeHours, estimatedCompletion) so the live-cost maths never breaks.
+// The API sends `currentOrderId` and `runtimeToday` (hours); the machine components read
+// `orderId` and `runtimeHours`. Everything else (progress, costPerMeter, orderMachineCost,
+// estimatedCompletion, ...) is passed through unchanged.
 function normaliseMachine(apiMachine) {
   return {
     ...apiMachine,
-    // Map API field name → component field name
-    orderId: apiMachine.currentOrderId ?? null,
-    // Fields not yet in the API — default to safe values
-    runtimeHours:          apiMachine.runtimeHours          ?? 0,
-    estimatedCompletion:   apiMachine.estimatedCompletion    ?? null,
+    orderId: apiMachine.currentOrderId ?? apiMachine.orderId ?? null,
+    runtimeHours: apiMachine.runtimeToday ?? apiMachine.runtimeHours ?? 0,
+    estimatedCompletion: apiMachine.estimatedCompletion ?? null,
   };
 }
 
@@ -59,11 +59,17 @@ function SummaryStrip({ machines }) {
   );
 }
 
-function OfflineBanner() {
+/** Live / reconnecting indicator, simulator state and the latest factory event. */
+function LiveStatus({ connected, simulator, event }) {
   return (
-    <div className="flex items-center gap-2 rounded-lg bg-slate-100 border border-slate-200 px-4 py-2 text-xs text-slate-500">
-      <WifiOff size={14} />
-      Backend offline — showing mock data. WebSocket live feed will replace this interval once ready.
+    <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
+      <span className={`inline-flex items-center gap-1.5 font-semibold ${connected ? "text-green-600" : "text-amber-600"}`}>
+        <Radio size={14} /> {connected ? "Live" : "Reconnecting…"}
+      </span>
+      {simulator && (
+        <span>Simulator {simulator.running ? `running at ${simulator.speed}x` : "stopped"}</span>
+      )}
+      {event && <span className="rounded bg-slate-100 px-2 py-0.5">{event.message}</span>}
     </div>
   );
 }
@@ -71,57 +77,33 @@ function OfflineBanner() {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function ProductionPage() {
-  const [machines, setMachines]   = useState([]);
-  const [loading, setLoading]     = useState(true);
-  const [isOffline, setOffline]   = useState(false);
+  // Initial state from GET /api/machines, then live updates over WS /ws/machines
+  const { data, loading, error, reload } = useApi("/api/machines", { mock: mockMachines });
+  const socket = useMachineSocket(!USE_MOCKS);
+  const [mockLive, setMockLive] = useState(null); // mock mode only
   const [selectedId, setSelectedId] = useState(null);
 
-  // ── Step 1: Fetch initial machine state from GET /api/machines ──
-  useEffect(() => {
-    client.get("/api/machines")
-      .then((res) => {
-        // Normalise API shape → component shape (currentOrderId → orderId, add defaults)
-        setMachines(res.data.map(normaliseMachine));
-        setOffline(false);
-      })
-      .catch(() => {
-        // Backend not reachable — use mock data (already has orderId field)
-        setMachines(mockMachines);
-        setOffline(true);
-      })
-      .finally(() => setLoading(false));
-  }, []);
+  const source = socket.machines ?? mockLive ?? data;
+  const machines = (source ?? []).map(normaliseMachine);
 
-  // ── Step 2: Fake live update every 3 s for RUNNING machines ──
-  // The Lead can replace this with:  const machines = useMachineSocket();
-  // WS /ws/machines exists but is demo-feed only — interval is correct for now.
+  // Mock mode only: fake a production tick every 3 s so the page still moves without a backend
   useEffect(() => {
-    if (machines.length === 0) return; // wait for initial load
-
+    if (!USE_MOCKS || !data) return undefined;
+    setMockLive(data);
     const interval = setInterval(() => {
-      setMachines((prev) =>
-        prev.map((m) => {
+      setMockLive((prev) =>
+        (prev ?? []).map((m) => {
           if (m.status !== "RUNNING" || m.producedMeters >= m.targetMeters) return m;
-          const increment  = (m.productionRate / 3600) * (TICK_INTERVAL_MS / 1000);
-          const newProduced = Math.min(m.targetMeters, m.producedMeters + increment);
-          return { ...m, producedMeters: newProduced };
+          const increment = (m.productionRate / 3600) * (TICK_INTERVAL_MS / 1000);
+          return { ...m, producedMeters: Math.min(m.targetMeters, m.producedMeters + increment) };
         })
       );
     }, TICK_INTERVAL_MS);
-
     return () => clearInterval(interval);
-  }, [machines.length]); // re-run only if machine count changes (initial load or reconnect)
+  }, [data]);
 
   // Derive selected machine from live state so the panel stays up-to-date
   const selectedMachine = machines.find((m) => m.machineId === selectedId) ?? null;
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64 text-slate-400 text-sm">
-        Loading machines…
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">
@@ -129,22 +111,40 @@ export default function ProductionPage() {
         title="Production Control Tower"
         subtitle="Live machine status — updates every 3 seconds"
       />
+      <MockBadge />
 
-      {isOffline && <OfflineBanner />}
+      <ApiErrorBanner error={error} onRetry={reload} />
 
-      {/* ── Summary strip — takes machines as prop ── */}
-      <SummaryStrip machines={machines} />
+      {!USE_MOCKS && !error && (
+        <LiveStatus connected={socket.connected} simulator={socket.simulator} event={socket.event} />
+      )}
 
-      {/* ── Machine card grid (1 / 2 / 3 columns) ── */}
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
-        {machines.map((machine) => (
-          <MachineCard
-            key={machine.machineId}
-            machine={machine}
-            onClick={() => setSelectedId(machine.machineId)}
-          />
-        ))}
-      </div>
+      {loading && !source && (
+        <div className="flex items-center justify-center h-64 text-slate-400 text-sm">Loading machines…</div>
+      )}
+
+      {!loading && !error && machines.length === 0 && (
+        <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-400">
+          No machines found. Run <code>python -m app.seed</code> in the backend.
+        </div>
+      )}
+
+      {machines.length > 0 && (
+        <>
+          <SummaryStrip machines={machines} />
+
+          {/* ── Machine card grid (1 / 2 / 3 columns) ── */}
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
+            {machines.map((machine) => (
+              <MachineCard
+                key={machine.machineId}
+                machine={machine}
+                onClick={() => setSelectedId(machine.machineId)}
+              />
+            ))}
+          </div>
+        </>
+      )}
 
       {/* ── Detail panel — live machine object from state ── */}
       {selectedMachine && (

@@ -63,12 +63,13 @@ export default function MachineDetailPanel({ machine, onClose }) {
     machineId, name, status, orderId,
     producedMeters, targetMeters, productionRate,
     temperature, efficiency, estimatedCompletion,
-    costPerHour, runtimeHours,
+    costPerHour, runtimeHours, orderMachineCost, costPerMeter,
   } = machine;
 
   const progress       = progressPercent(producedMeters, targetMeters);
-  const attributedCost = costPerHour * runtimeHours;
-  const costPerMetre   = producedMeters > 0 ? attributedCost / producedMeters : null;
+  // Prefer the server's numbers (orderMachineCost, costPerMeter); compute only for mock data
+  const attributedCost = orderMachineCost ?? costPerHour * runtimeHours;
+  const costPerMetre   = costPerMeter ?? (producedMeters > 0 ? attributedCost / producedMeters : null);
 
   const completionStr = estimatedCompletion
     ? new Date(estimatedCompletion).toLocaleString("en-IN", {

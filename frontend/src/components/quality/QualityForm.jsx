@@ -1,90 +1,92 @@
 import { useState } from "react";
 import { CheckCircle2 } from "lucide-react";
 
-export default function QualityForm({
-  defectOptions = [],
-  orderOptions = [],
-  machineOptions = [],
-  yarnBatchOptions = [],
-  onSubmitQC,
-  onStatusChange,
-}) {
-  const [formData, setFormData] = useState({
-    rollId: "RL10098",
-    orderId: orderOptions[0] || "ORD104",
-    machineId: machineOptions[0] || "W01",
-    yarnBatch: yarnBatchOptions[0] || "YB82",
-    status: "PASSED",
-    selectedDefects: [],
-    affectedMeters: "120",
-  });
+// Defect names are a UI vocabulary (the API stores free text). The first three are the ones in the seed data.
+const DEFECT_OPTIONS = ["Weft break", "Uneven tension", "Colour patch", "Hole", "Loose thread", "Colour variation"];
 
+const SELECT_CLASS =
+  "w-full text-sm rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500";
+
+/**
+ * Quality inspection form.
+ *   orders, machines, batches - the real records from GET /api/orders, /api/machines, /api/inventory
+ *   onSubmitQC(body)          - async; posts to the API and throws with the server's message on failure
+ * Choosing an order preselects its machine and yarn batch.
+ */
+export default function QualityForm({ orders = [], machines = [], batches = [], onSubmitQC }) {
+  const emptyForm = () => {
+    const first = orders[0];
+    return {
+      rollId: "",
+      orderId: first?.orderId ?? "",
+      machineId: first?.machineId ?? machines[0]?.machineId ?? "",
+      yarnBatch: first?.yarnBatch ?? batches[0]?.batchId ?? "",
+      status: "PASSED",
+      selectedDefects: [],
+      affectedMeters: "",
+    };
+  };
+
+  const [formData, setFormData] = useState(emptyForm);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const needsMetres = formData.status === "FAILED" || formData.status === "REWORK";
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => {
       const updated = { ...prev, [name]: value };
-      if (name === "status" || name === "affectedMeters") {
-        onStatusChange?.({
-          status: updated.status,
-          affectedMeters: parseFloat(updated.affectedMeters) || 0,
-        });
+      if (name === "orderId") {
+        const order = orders.find((o) => o.orderId === value);
+        if (order?.machineId) updated.machineId = order.machineId;
+        if (order?.yarnBatch) updated.yarnBatch = order.yarnBatch;
       }
       return updated;
     });
     if (error) setError("");
+    if (notice) setNotice("");
   };
 
   const handleDefectToggle = (defect) => {
     setFormData((prev) => {
       const exists = prev.selectedDefects.includes(defect);
-      const updatedDefects = exists
-        ? prev.selectedDefects.filter((d) => d !== defect)
-        : [...prev.selectedDefects, defect];
-      return { ...prev, selectedDefects: updatedDefects };
+      return {
+        ...prev,
+        selectedDefects: exists ? prev.selectedDefects.filter((d) => d !== defect) : [...prev.selectedDefects, defect],
+      };
     });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!formData.rollId.trim()) {
-      setError("Please enter a valid Roll ID.");
-      return;
-    }
+    const metres = parseFloat(formData.affectedMeters);
+    if (!formData.orderId) return setError("Please choose an order.");
+    if (needsMetres && !(metres >= 1)) return setError("Affected metres is required (at least 1) for FAILED or REWORK rolls.");
 
-    const isNonPassed = formData.status === "FAILED" || formData.status === "REWORK";
-    const affectedMetersNum = parseFloat(formData.affectedMeters) || 0;
-
-    const newRoll = {
-      rollId: formData.rollId.trim().toUpperCase(),
+    const body = {
       orderId: formData.orderId,
-      buyer: formData.orderId === "ORD104" ? "ABC Garments" : formData.orderId === "ORD098" ? "Vogue Textiles" : "FabIndia Global",
-      yarnBatch: formData.yarnBatch,
-      machineId: formData.machineId,
-      shift: "B", // defaulted shift
-      producedAt: new Date().toISOString(),
+      machineId: formData.machineId || undefined,
+      yarnBatch: formData.yarnBatch || undefined,
       status: formData.status,
-      defects: isNonPassed ? formData.selectedDefects : [],
-      reworkStatus: isNonPassed ? "PENDING" : "NONE",
+      defects: needsMetres ? formData.selectedDefects : [],
+      ...(formData.rollId.trim() && { rollId: formData.rollId.trim().toUpperCase() }),
+      ...(needsMetres && { affectedMeters: metres }),
     };
 
-    onSubmitQC(newRoll, affectedMetersNum);
-
-    // Increment roll number for convenience and reset
-    const match = formData.rollId.match(/\d+/);
-    const nextNum = match ? parseInt(match[0], 10) + 1 : 10099;
-    setFormData({
-      rollId: `RL${nextNum}`,
-      orderId: orderOptions[0] || "ORD104",
-      machineId: machineOptions[0] || "W01",
-      yarnBatch: yarnBatchOptions[0] || "YB82",
-      status: "PASSED",
-      selectedDefects: [],
-      affectedMeters: "120",
-    });
-    setError("");
+    setSaving(true);
+    try {
+      const saved = await onSubmitQC(body);
+      setFormData(emptyForm());
+      setError("");
+      setNotice(`Saved roll ${saved?.roll?.rollId ?? ""}`.trim());
+    } catch (err) {
+      setError(err?.response?.data?.detail || err?.message || "Could not save the roll.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -100,24 +102,27 @@ export default function QualityForm({
       </div>
 
       {error && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg">
+        <div role="alert" className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg">
           {error}
+        </div>
+      )}
+      {notice && (
+        <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-lg">
+          {notice}
         </div>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-          {/* Roll ID */}
+          {/* Roll ID (optional, generated by the server) */}
           <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1">
-              Roll ID <span className="text-red-500">*</span>
-            </label>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">Roll ID</label>
             <input
               type="text"
               name="rollId"
               value={formData.rollId}
               onChange={handleChange}
-              placeholder="e.g. RL10098"
+              placeholder="auto-generated"
               className="w-full text-sm rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-slate-800 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
@@ -127,15 +132,10 @@ export default function QualityForm({
             <label className="block text-xs font-semibold text-slate-600 mb-1">
               Order <span className="text-red-500">*</span>
             </label>
-            <select
-              name="orderId"
-              value={formData.orderId}
-              onChange={handleChange}
-              className="w-full text-sm rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            >
-              {orderOptions.map((ord) => (
-                <option key={ord} value={ord}>
-                  {ord}
+            <select name="orderId" value={formData.orderId} onChange={handleChange} className={SELECT_CLASS}>
+              {orders.map((o) => (
+                <option key={o.orderId} value={o.orderId}>
+                  {o.orderId} · {o.buyerName}
                 </option>
               ))}
             </select>
@@ -146,15 +146,10 @@ export default function QualityForm({
             <label className="block text-xs font-semibold text-slate-600 mb-1">
               Machine <span className="text-red-500">*</span>
             </label>
-            <select
-              name="machineId"
-              value={formData.machineId}
-              onChange={handleChange}
-              className="w-full text-sm rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            >
-              {machineOptions.map((m) => (
-                <option key={m} value={m}>
-                  {m}
+            <select name="machineId" value={formData.machineId} onChange={handleChange} className={SELECT_CLASS}>
+              {machines.map((m) => (
+                <option key={m.machineId} value={m.machineId}>
+                  {m.machineId}
                 </option>
               ))}
             </select>
@@ -165,15 +160,10 @@ export default function QualityForm({
             <label className="block text-xs font-semibold text-slate-600 mb-1">
               Yarn Batch <span className="text-red-500">*</span>
             </label>
-            <select
-              name="yarnBatch"
-              value={formData.yarnBatch}
-              onChange={handleChange}
-              className="w-full text-sm rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-slate-800 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            >
-              {yarnBatchOptions.map((yb) => (
-                <option key={yb} value={yb}>
-                  {yb}
+            <select name="yarnBatch" value={formData.yarnBatch} onChange={handleChange} className={`${SELECT_CLASS} font-mono`}>
+              {batches.map((b) => (
+                <option key={b.batchId} value={b.batchId}>
+                  {b.batchId} · {b.colour}
                 </option>
               ))}
             </select>
@@ -203,63 +193,65 @@ export default function QualityForm({
           </div>
         </div>
 
-        {/* Defects and Affected Metres (shown especially relevant when REWORK or FAILED) */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-slate-100">
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-2">
-              Defect Checkboxes:
-            </label>
-            <div className="flex flex-wrap gap-3">
-              {defectOptions.map((defect) => {
-                const checked = formData.selectedDefects.includes(defect);
-                return (
-                  <label
-                    key={defect}
-                    className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium cursor-pointer transition-colors ${
-                      checked
-                        ? "bg-red-50 border-red-300 text-red-800"
-                        : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100"
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => handleDefectToggle(defect)}
-                      className="rounded border-slate-300 text-red-600 focus:ring-red-500"
-                    />
-                    <span>{defect}</span>
-                  </label>
-                );
-              })}
+        {/* Defects and affected metres (only for FAILED or REWORK) */}
+        {needsMetres && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-slate-100">
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-2">Defects:</label>
+              <div className="flex flex-wrap gap-3">
+                {DEFECT_OPTIONS.map((defect) => {
+                  const checked = formData.selectedDefects.includes(defect);
+                  return (
+                    <label
+                      key={defect}
+                      className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium cursor-pointer transition-colors ${
+                        checked
+                          ? "bg-red-50 border-red-300 text-red-800"
+                          : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => handleDefectToggle(defect)}
+                        className="rounded border-slate-300 text-red-600 focus:ring-red-500"
+                      />
+                      <span>{defect}</span>
+                    </label>
+                  );
+                })}
+              </div>
             </div>
-          </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1">
-              Affected Fabric Metres
-            </label>
-            <div className="flex items-center gap-2">
-              <input
-                type="number"
-                min="0"
-                step="1"
-                name="affectedMeters"
-                value={formData.affectedMeters}
-                onChange={handleChange}
-                placeholder="e.g. 120"
-                className="w-40 text-sm rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <span className="text-xs text-slate-500">metres impacted</span>
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1">
+                Affected metres <span className="text-red-500">*</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  name="affectedMeters"
+                  value={formData.affectedMeters}
+                  onChange={handleChange}
+                  placeholder="e.g. 120"
+                  required
+                  className="w-40 text-sm rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <span className="text-xs text-slate-500">metres impacted</span>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         <div className="flex justify-end pt-2">
           <button
             type="submit"
-            className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg shadow-sm transition-colors cursor-pointer"
+            disabled={saving}
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-medium rounded-lg shadow-sm transition-colors cursor-pointer"
           >
-            Submit QC
+            {saving ? "Saving…" : "Submit QC"}
           </button>
         </div>
       </form>

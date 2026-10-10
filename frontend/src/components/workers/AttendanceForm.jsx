@@ -26,7 +26,7 @@ export default function AttendanceForm({
     if (error) setError("");
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
     const hours = parseFloat(formData.hoursWorked);
@@ -80,7 +80,12 @@ export default function AttendanceForm({
       date: formData.date,
     };
 
-    onLogAttendance(newEntry);
+    try {
+      await onLogAttendance(newEntry); // throws with the server's message on failure
+    } catch (err) {
+      setError(err?.response?.data?.detail || err?.message || "Could not save attendance.");
+      return;
+    }
 
     // Clear / reset form after successful submit
     setFormData({

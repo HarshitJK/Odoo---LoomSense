@@ -5,22 +5,25 @@
 import client from "./client.js";
 
 /**
- * Fetch all fabric rolls from the API (newest first).
- * Returns: [{ rollId, orderId, machineId, yarnBatch, shift, buyerName,
- *             status, defects, reworkCost, date }]
- *
- * API note: field is `buyerName` (not `buyer`) and `date` (not `producedAt`).
- * We normalise below so the rest of the UI doesn't need to change.
+ * Normalise API roll → UI roll shape. Everything the server sends is passed through
+ * (affectedMeters, impact, reworkStatus, producedAt, reworkCost ...); only `buyer` is
+ * renamed for the UI components.
  */
-export async function fetchRolls() {
-  const res = await client.get("/api/quality");
-  // Normalise API shape → UI shape
-  return res.data.map(normaliseRoll);
+export function normaliseRoll(apiRoll) {
+  return {
+    ...apiRoll,
+    buyer: apiRoll.buyerName || "",
+    producedAt: apiRoll.producedAt ?? (apiRoll.date ? `${apiRoll.date}T00:00:00` : null),
+    status: apiRoll.status || "PENDING",
+    defects: Array.isArray(apiRoll.defects) ? apiRoll.defects : [],
+  };
 }
 
+export const normaliseRolls = (apiRolls) => apiRolls.map(normaliseRoll);
+
 /**
- * Fetch a single fabric roll by ID.
- * Returns a normalised roll object or throws a 404 error.
+ * Fetch a single fabric roll by ID (internal view, includes cost fields).
+ * The public passport page uses fetchPassport in api/passport.js instead.
  */
 export async function fetchRollById(rollId) {
   const res = await client.get(`/api/quality/${rollId}`);
@@ -28,49 +31,14 @@ export async function fetchRollById(rollId) {
 }
 
 /**
- * Submit a new quality inspection roll to the API.
- * Body: { rollId?, orderId, machineId, yarnBatch, shift, buyerName, status, defects }
- * Returns the saved roll (normalised).
+ * Submit a quality inspection roll.
+ * Body: { orderId, machineId, yarnBatch, shift?, status, defects[], affectedMeters, reworkStatus?, rollId? }
+ * Returns { roll, impact, marginBefore, marginAfter } straight from the server; `impact` is
+ * { additionalLabour, machineCost, materialLoss, total } and is zero for PASSED rolls.
+ * Throws an axios error; the server's message is in err.response.data.detail.
  */
-export async function postQualityRoll(rollData) {
-  // Convert UI field names → API field names
-  const body = {
-    orderId: rollData.orderId,
-    machineId: rollData.machineId,
-    yarnBatch: rollData.yarnBatch,
-    shift: rollData.shift || "B",
-    buyerName: rollData.buyer || rollData.buyerName || "",
-    status: rollData.status,
-    defects: rollData.defects || [],
-    // rollId is optional - API generates it if omitted
-    ...(rollData.rollId && { rollId: rollData.rollId }),
-  };
+export async function postQualityRoll(body) {
   const res = await client.post("/api/quality", body);
-  return normaliseRoll(res.data);
-}
-
-/**
- * Normalise API roll → UI roll shape
- * API uses: { buyerName, date }   UI uses: { buyer, producedAt }
- */
-function normaliseRoll(apiRoll) {
-  return {
-    rollId: apiRoll.rollId,
-    orderId: apiRoll.orderId,
-    buyer: apiRoll.buyerName || "",
-    yarnBatch: apiRoll.yarnBatch,
-    machineId: apiRoll.machineId,
-    shift: apiRoll.shift,
-    producedAt: apiRoll.date
-      ? `${apiRoll.date}T00:00:00`
-      : new Date().toISOString(),
-    status: apiRoll.status || "PENDING",
-    defects: Array.isArray(apiRoll.defects) ? apiRoll.defects : [],
-    reworkStatus:
-      apiRoll.status === "REWORK"
-        ? "IN_PROGRESS"
-        : apiRoll.status === "FAILED"
-        ? "PENDING"
-        : "NONE",
-  };
+  const { impact, marginBefore, marginAfter, ...roll } = res.data;
+  return { roll: normaliseRoll({ ...roll, impact }), impact, marginBefore, marginAfter };
 }

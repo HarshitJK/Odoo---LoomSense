@@ -76,16 +76,17 @@ export default function MachineCard({ machine, onClick }) {
     machineId, name, status, orderId,
     producedMeters, targetMeters, productionRate,
     temperature, efficiency, estimatedCompletion,
-    costPerHour, runtimeHours,
+    costPerHour, runtimeHours, orderMachineCost, costPerMeter,
   } = machine;
 
   // Progress calculation
   const progress = progressPercent(producedMeters, targetMeters);
 
   // Live cost visibility
-  const attributedCost = costPerHour * runtimeHours;
+  // Prefer the server's numbers (orderMachineCost, costPerMeter); compute only for mock data
+  const attributedCost = orderMachineCost ?? costPerHour * runtimeHours;
   const costPerMetre =
-    producedMeters > 0 ? attributedCost / producedMeters : null;
+    costPerMeter ?? (producedMeters > 0 ? attributedCost / producedMeters : null);
 
   // Border colour matches machine status
   const borderColour = {

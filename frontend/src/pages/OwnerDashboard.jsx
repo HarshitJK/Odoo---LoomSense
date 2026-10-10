@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
-import { DollarSign, TrendingDown, TrendingUp, Percent, WifiOff } from "lucide-react";
+import { DollarSign, TrendingDown, TrendingUp, Percent } from "lucide-react";
 
 import PageHeader from "../components/common/PageHeader.jsx";
+import ApiErrorBanner from "../components/common/ApiErrorBanner.jsx";
+import MockBadge from "../components/common/MockBadge.jsx";
 import RevenueCostChart from "../components/charts/RevenueCostChart.jsx";
 import CostBreakdownChart from "../components/charts/CostBreakdownChart.jsx";
 import OrderProfitTable from "../components/orders/OrderProfitTable.jsx";
@@ -10,11 +11,11 @@ import ProfitLeakagePanel from "../components/orders/ProfitLeakagePanel.jsx";
 // Finance KPIs and leakage — NOT yet in the API (/api/finance/* is placeholder).
 // Keep using mock data until the Lead implements the finance endpoints.
 import { monthlySummary, monthlyTrend, profitLeakage } from "../mocks/finance.js";
-// Fallback order data when API is unreachable
+// Only used when VITE_USE_MOCKS=true
 import { orders as mockOrders } from "../mocks/orders.js";
+import useApi from "../hooks/useApi.js";
 
 import { formatCurrency } from "../utils/formatCurrency.js";
-import client from "../api/client.js"; // axios instance, base URL from VITE_API_URL
 
 // ─── Small reusable components (local) ───────────────────────────────────────
 
@@ -80,38 +81,12 @@ function HighlightOrderCard({ order, label, borderColour }) {
   );
 }
 
-/** Small banner shown when the API could not be reached */
-function OfflineBanner() {
-  return (
-    <div className="flex items-center gap-2 rounded-lg bg-slate-100 border border-slate-200 px-4 py-2 text-xs text-slate-500">
-      <WifiOff size={14} />
-      Backend offline — showing mock data. Start the API server at http://localhost:8000.
-    </div>
-  );
-}
-
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function OwnerDashboard() {
   // Orders come from the real API: GET /api/orders
-  const [orders, setOrders]     = useState([]);
-  const [loading, setLoading]   = useState(true);
-  const [isOffline, setOffline] = useState(false);
-
-  useEffect(() => {
-    // Fetch all orders from the backend
-    client.get("/api/orders")
-      .then((res) => {
-        setOrders(res.data);
-        setOffline(false);
-      })
-      .catch(() => {
-        // Backend not running — fall back to local mock data
-        setOrders(mockOrders);
-        setOffline(true);
-      })
-      .finally(() => setLoading(false));
-  }, []);
+  const { data, loading, error, reload } = useApi("/api/orders", { mock: mockOrders });
+  const orders = data ?? [];
 
   // Only orders that have real profit data (exclude pending / null profit)
   const completedOrders = orders.filter((o) => o.profit !== null && o.profit !== undefined);
@@ -122,14 +97,6 @@ export default function OwnerDashboard() {
   // Finance summary — stays on mock until /api/finance/* is implemented
   const { revenue, totalCost, profit, margin, breakdown } = monthlySummary;
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64 text-slate-400 text-sm">
-        Loading orders…
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
       <PageHeader
@@ -137,8 +104,11 @@ export default function OwnerDashboard() {
         subtitle="Profitability and cost intelligence — October 2026"
       />
 
-      {/* Offline notice when backend is unreachable */}
-      {isOffline && <OfflineBanner />}
+      <MockBadge />
+      <ApiErrorBanner error={error} onRetry={reload} />
+      {loading && !data && (
+        <div className="flex items-center justify-center h-32 text-slate-400 text-sm">Loading orders…</div>
+      )}
 
       {/* ── KPI row ── */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -165,7 +135,7 @@ export default function OwnerDashboard() {
       </div>
 
       {/* ── Order profit table — live from GET /api/orders ── */}
-      <OrderProfitTable orders={orders} />
+      {data && <OrderProfitTable orders={orders} />}
 
       {/* ── Highlight cards — derived from API data ── */}
       {mostProfitable && leastProfitable && (

@@ -1,9 +1,14 @@
-import { calculateLabourCostPerOrder } from "./wageCalculations.js";
 import { formatCurrency } from "../../utils/formatCurrency.js";
 import { Layers, Award } from "lucide-react";
 
-export default function LabourCostPerOrder({ workers = [] }) {
-  const orderBreakdowns = calculateLabourCostPerOrder(workers);
+/** rows = labourCostPerOrder from GET /api/workers/wages/summary (calculated by the server). */
+export default function LabourCostPerOrder({ rows = [] }) {
+  const orderBreakdowns = rows.map((r) => ({
+    orderId: r.orderId,
+    distinctWorkersCount: r.workersInvolved,
+    totalHours: r.labourHours,
+    totalCost: r.labourCost,
+  }));
 
   // Find the highest cost among orders
   const maxCost = orderBreakdowns.reduce(

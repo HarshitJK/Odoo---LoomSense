@@ -1,88 +1,41 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import PageHeader from "../components/common/PageHeader.jsx";
+import ApiErrorBanner from "../components/common/ApiErrorBanner.jsx";
+import MockBadge from "../components/common/MockBadge.jsx";
 
-// ── API functions (swap mock → real in one place) ──────────────────────────
-import { fetchRolls, postQualityRoll } from "../api/quality.js";
+import useApi from "../hooks/useApi.js";
+import { normaliseRolls, postQualityRoll } from "../api/quality.js";
 
-// ── Mock fallback (used when backend is offline) ───────────────────────────
-import {
-  rolls as mockRolls,
-  defectOptions,
-  orderOptions,
-  machineOptions,
-  yarnBatchOptions,
-} from "../mocks/quality.js";
+// Only used when VITE_USE_MOCKS=true
+import { rolls as mockRolls } from "../mocks/quality.js";
+import { orders as mockOrders } from "../mocks/orders.js";
+import { machines as mockMachines } from "../mocks/machines.js";
+import { inventory as mockInventory } from "../mocks/inventory.js";
 
 import RollsTable from "../components/quality/RollsTable.jsx";
 import QualityForm from "../components/quality/QualityForm.jsx";
 import DefectCostImpact from "../components/quality/DefectCostImpact.jsx";
-import { AlertCircle } from "lucide-react";
 
 export default function QualityPage() {
-  const [rollsList, setRollsList] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [apiError, setApiError] = useState(null);
+  const rolls = useApi("/api/quality", { mock: mockRolls, transform: normaliseRolls });
+  const orders = useApi("/api/orders", { mock: mockOrders });
+  const machines = useApi("/api/machines", { mock: mockMachines });
+  const batches = useApi("/api/inventory", { mock: mockInventory });
 
-  // Tracks defect impact state: shown when form status is FAILED or REWORK
-  const [defectContext, setDefectContext] = useState({
-    active: false,
-    status: "REWORK",
-    affectedMeters: 120,
-  });
+  // Server result of the last FAILED / REWORK roll: { roll, impact, marginBefore, marginAfter }
+  const [lastImpact, setLastImpact] = useState(null);
 
-  // Fetch all rolls from API on mount; fall back to mock data if backend is offline
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
+  const all = [rolls, orders, machines, batches];
+  const error = all.map((r) => r.error).find(Boolean);
+  const retryAll = () => all.forEach((r) => r.reload());
+  const formReady = orders.data && machines.data && batches.data;
 
-    fetchRolls()
-      .then((apiRolls) => {
-        if (cancelled) return;
-        setRollsList(apiRolls);
-        setApiError(null);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setRollsList(mockRolls);
-        setApiError("Backend offline — showing local demo data.");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => { cancelled = true; };
-  }, []);
-
-  const handleStatusChange = ({ status, affectedMeters }) => {
-    if (status === "FAILED" || status === "REWORK") {
-      setDefectContext({ active: true, status, affectedMeters });
-    } else {
-      setDefectContext((prev) => ({ ...prev, active: false }));
-    }
-  };
-
-  const handleAddRoll = async (newRoll, affectedMeters) => {
-    // Optimistically add to local list for instant UI feedback
-    setRollsList((prev) => [newRoll, ...prev]);
-
-    if (newRoll.status === "FAILED" || newRoll.status === "REWORK") {
-      setDefectContext({ active: true, status: newRoll.status, affectedMeters });
-    } else {
-      setDefectContext((prev) => ({ ...prev, active: false }));
-    }
-
-    try {
-      // POST to API: rollId is optional, API will generate one if omitted
-      const saved = await postQualityRoll(newRoll);
-
-      // Replace the optimistic entry with the real saved record (has server-assigned rollId)
-      setRollsList((prev) =>
-        prev.map((r) => (r.rollId === newRoll.rollId ? saved : r))
-      );
-    } catch {
-      // API save failed — optimistic record stays in the list.
-      // In production you'd show a toast. Here we keep UX intact.
-    }
+  const handleSubmitQC = async (body) => {
+    const result = await postQualityRoll(body); // throws with the server's message on failure
+    const bad = result.roll.status === "FAILED" || result.roll.status === "REWORK";
+    setLastImpact(bad ? result : null);
+    rolls.reload();
+    return result;
   };
 
   return (
@@ -91,42 +44,31 @@ export default function QualityPage() {
         title="Quality Control & Inspection"
         subtitle="Fabric quality checks, defect cost impact and traceability records (Feature 4)"
       />
+      <MockBadge />
 
-      {/* API status banner */}
-      {apiError && (
-        <div className="flex items-center gap-2 px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
-          <AlertCircle className="w-4 h-4 shrink-0" />
-          <span>{apiError}</span>
-        </div>
-      )}
+      <ApiErrorBanner error={error} onRetry={retryAll} />
 
-      {/* Loading skeleton */}
-      {loading && (
+      {rolls.loading && !rolls.data && (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-8 text-center text-sm text-slate-400 animate-pulse">
-          Loading quality rolls from API…
+          Loading quality rolls…
         </div>
       )}
 
-      {/* Defect Cost Impact Card — Shown ONLY when status is FAILED or REWORK */}
-      {defectContext.active && (
-        <DefectCostImpact
-          status={defectContext.status}
-          affectedMeters={defectContext.affectedMeters}
+      {/* Defect Cost Impact Card — numbers come from the POST /api/quality response */}
+      {lastImpact && <DefectCostImpact {...lastImpact} />}
+
+      {/* QC Submission Form */}
+      {formReady && (
+        <QualityForm
+          orders={orders.data}
+          machines={machines.data}
+          batches={batches.data}
+          onSubmitQC={handleSubmitQC}
         />
       )}
 
-      {/* QC Submission Form */}
-      <QualityForm
-        defectOptions={defectOptions}
-        orderOptions={orderOptions}
-        machineOptions={machineOptions}
-        yarnBatchOptions={yarnBatchOptions}
-        onSubmitQC={handleAddRoll}
-        onStatusChange={handleStatusChange}
-      />
-
       {/* Rolls Table with "View Passport" link */}
-      {!loading && <RollsTable rolls={rollsList} />}
+      {rolls.data && <RollsTable rolls={rolls.data} />}
     </div>
   );
 }
