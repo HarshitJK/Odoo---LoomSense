@@ -15,16 +15,10 @@ def finance_dashboard(month: Optional[str] = None):
     month = valid_month(month)
     data = costing.load_data()  # one batch of queries shared by every calculation below
     profits = profitability.all_order_profits(data)
-    from app.services.month_end import report
-    books = report(month)
-    summary = {"label": profitability.month_label(month), "revenue": books["totalCashIn"],
-        "totalCost": books["totalExpenses"], "profit": books["netCashResult"],
-        "margin": profitability.calculate_margin(books["totalCashIn"], books["netCashResult"]),
-        "costBreakdown": {"rawMaterial": books["rawMaterialBills"], "labour": books["workerWages"],
-            "machine": books["machineOperatingCost"], "rework": books["reworkCost"], "other": books["otherExpenses"]}}
+    summary = profitability.monthly_summary(month)
     finished = [p for p in profits if not p["provisional"] and p["revenue"]]
 
-    month_payments = [t["amount"] for t in data["transactions"] if (t.get("date") or "").startswith(month)]
+    month_payments = [t["amount"] for t in data["transactions"] if t.get("type") == "BUYER_PAYMENT" and (t.get("date") or "").startswith(month)]
     breakdown = summary["costBreakdown"]
     return {
         "month": month,
@@ -36,7 +30,6 @@ def finance_dashboard(month: Optional[str] = None):
             "netProfit": summary["profit"],
             "profitMargin": summary["margin"],
             "buyerPayments": round(sum(month_payments), 2),
-            "paymentsReceived": round(sum(p["paidAmount"] for p in profits), 2),
             "paymentsPending": round(sum(p["pendingAmount"] for p in profits), 2),
             "workerWages": costing.wages_summary(month)["totalWorkforceCost"],
             "rawMaterialExpense": breakdown["rawMaterial"],
@@ -53,14 +46,7 @@ def finance_dashboard(month: Optional[str] = None):
 @router.get("/monthly")
 def finance_monthly():
     """Revenue, cost, profit and margin for each of the last 4 months."""
-    from app.services.month_end import report
-    result = []
-    for month in profitability.last_months():
-        r = report(month)
-        result.append({"month": month, "label": profitability.month_label(month), "revenue": r["totalCashIn"],
-                       "cost": r["totalExpenses"], "profit": r["netCashResult"],
-                       "margin": profitability.calculate_margin(r["totalCashIn"], r["netCashResult"])})
-    return result
+    return profitability.monthly_trend()
 
 
 @router.get("/profit-leakage")

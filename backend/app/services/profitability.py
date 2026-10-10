@@ -98,15 +98,19 @@ def month_label(month: str) -> str:
 
 
 def monthly_summary(month: str, profits: list = None) -> dict:
-    """Compatibility adapter over activity-dated books; profits is ignored."""
-    from app.services.month_end import report
+    """Earned production value less dated consumption and incurred costs."""
+    from app.services.month_end import report, in_month
     r = report(month)
-    return {"month": month, "label": month_label(month), "revenue": r["totalCashIn"],
-        "totalCost": r["totalExpenses"], "profit": r["netCashResult"],
-        "margin": calculate_margin(r["totalCashIn"], r["netCashResult"]),
-        "orderCount": r["productionOverview"]["totalOrders"],
-        "costBreakdown": {"rawMaterial": r["rawMaterialBills"], "labour": r["workerWages"],
-            "machine": r["machineOperatingCost"], "rework": r["reworkCost"], "other": r["otherExpenses"]}}
+    consumption = dbm.db.materialConsumption.find({}, {"_id": 0})
+    breakdown = {"rawMaterial": round(sum(c.get("cost", 0) for c in consumption if in_month(c, "date", month)), 2),
+        "labour": r["workerWages"], "machine": r["machineOperatingCost"],
+        "rework": r["reworkCost"], "other": r["otherExpenses"]}
+    cost = round(sum(breakdown.values()), 2)
+    revenue = r["productionValue"]
+    profit = calculate_profit(revenue, cost)
+    return {"month": month, "label": month_label(month), "revenue": revenue,
+        "totalCost": cost, "profit": profit, "margin": calculate_margin(revenue, profit),
+        "orderCount": r["productionOverview"]["totalOrders"], "costBreakdown": breakdown}
 
 
 def last_months(count: int = 4, today: date = None) -> list:

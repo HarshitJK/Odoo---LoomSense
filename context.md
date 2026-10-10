@@ -167,13 +167,12 @@ Before production begins, estimate:
 
 Example:
 ```text
-Expected Revenue: ₹180,000
-Projected Cost: ₹142,000
-Projected Profit: ₹38,000
-Expected Margin: 21.1%
+Expected Revenue: ₹350,000
+Projected Cost: ₹254,498.28
+Projected Profit: ₹95,501.72
+Expected Margin: 27.3%
 
-Warning:
-Margin below factory target of 25%.
+Above the factory target of 25%.
 ```
 
 ---
@@ -571,7 +570,7 @@ Suggested fields:
   "status": "WEAVING",
   "machineId": "W01",
   "deadline": "2026-10-15T18:00:00",
-  "revenue": 180000,
+  "revenue": 350000,
   "costs": {
     "rawMaterial": 82000,
     "labour": 24500,
@@ -651,7 +650,7 @@ Suggested fields:
   "transactionId": "TXN001",
   "type": "BUYER_PAYMENT",
   "orderId": "ORD104",
-  "amount": 180000,
+  "amount": 142400,
   "date": "2026-10-10"
 }
 ```
@@ -841,70 +840,29 @@ Do not add extra features until these six are connected and demo-ready.
 
 # 15. Demo Story
 
-Use one order from start to finish.
+Use a fresh order: ABC Garments, Cotton Navy Blue, 2,000 m, expected revenue ₹350,000.
+Order IDs are assigned automatically: the first live order on a fresh seed is ORD112.
+ORD104 remains the seeded in-progress order; its old rolls do not mean the whole order passed QC.
 
-## Step 1
-Create:
-```text
-ORD-104
-Buyer: ABC Garments
-Cotton Navy Blue
-2,000m
-```
+1. Owner checks readiness: 1,180 kg required, 950 kg available, 230 kg short;
+   "Not enough material". Projected cost ₹254,498.28, profit ₹95,501.72, margin 27.3%, above the 25% target.
+2. Receive 1,050 kg into YB82 at the unchanged ₹180/kg. Check again: 2,000 kg available,
+   "Material ready", the same projected margin. Reserve 1,180 kg for the new order.
+3. Manager creates the order and assigns idle W05 (ORD104 remains on W01).
+4. Manager logs 8 hours plus 1 overtime hour for Suresh Patel (EMP023, latest machine W05).
+   The server takes his ₹85 rate from the worker record; manager sees hours only.
+5. Send 100 m of machine readings, then QC passes the first-off check. Send the remaining 1,900 m.
+6. QC fails weaving with HIGH severity, 60 m affected, ₹8,300 rework cost. The hold blocks advance (409).
+   Record "Rework this stage", then pass the reinspection. Profit is ₹8,300 lower than without the failure.
+7. Manager advances and completes Processing and Finishing; QC passes each stage inspection.
+8. QC passes Final inspection. The new roll gets its own automatic ID and a final passport.
+   Buyer tracking says "Quality verification in progress" before this pass, then "Quality approved".
+9. Owner reviews earned revenue, dated consumed material, wages, machine time, quality loss,
+   net profit and leakage. Cash receipts and lifetime order profit are labelled separately.
 
-## Step 2
-Order Readiness checks raw material.
-
-Show:
-```text
-Material Ready
-Projected Margin: 27%
-```
-
-## Step 3
-Assign W01.
-
-Production dashboard updates in real time.
-
-## Step 4
-Workers log hours against ORD-104.
-
-Labour cost increases automatically.
-
-## Step 5
-Production completes.
-
-Create Roll RL-10092.
-
-## Step 6
-Perform QC.
-
-Optionally trigger rework so judges see the cost impact.
-
-## Step 7
-Open the QR Fabric Passport.
-
-## Step 8
-Open Buyer Tracking page.
-
-Buyer sees order status without calling the factory.
-
-## Step 9
-Return to Owner Dashboard.
-
-Show:
-```text
-Revenue
-Material Cost
-Labour Cost
-Machine Cost
-Rework Cost
-True Order Cost
-Profit
-Margin
-```
-
-Finish by showing Profit Leakage / Insight.
+See docs/demo-runbook.md for clicks, reset, telemetry controls and expected figures.
+The API quality script also demonstrates component costs and a failed final inspection;
+those extra failures change its ending totals, so do not compare them with the one-failure click demo.
 
 ---
 

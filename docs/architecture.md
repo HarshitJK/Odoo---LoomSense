@@ -85,3 +85,24 @@ start, stop, reset, failure, and a speed multiplier. It can later be replaced by
 `uvicorn app.main:app --host 0.0.0.0 --port $PORT` (see `backend/Procfile` and `render.yaml`) with MongoDB Atlas.
 Run **one** instance only: the simulator and WebSocket connections live in the process memory.
 Required variables: `MONGODB_URI`; useful: `DB_NAME`, `CORS_ORIGINS`, `PASSPORT_BASE_URL`, `ADMIN_KEY`, `SIMULATOR_AUTOSTART`.
+
+
+## Dashboard accrual basis
+
+The dashboard and monthly trend share profitability.monthly_summary. Earned revenue is
+sum(order revenue / ordered metres * dated producedMetersDelta). Material cost is dated
+materialConsumption.cost, never supplier bills. Labour, machine runtime, quality loss and
+operating expenses are incurred in the selected month, using the month-end service's date rules.
+All orders with activity are included, including cost-only activity and unassigned factory overhead;
+we do not discard costs just because an order earns no revenue that month. Cash-only orders do not
+contribute earned revenue. Net profit = earned revenue - these costs; margin = profit / revenue,
+or zero when revenue is zero. Missing legacy production history is not reconstructed.
+This is a production-value management estimate, not statutory revenue recognition. Repeated output
+on restart is currently measured as production; a full returns/reversal ledger is outside scope.
+
+GET /api/finance/month-end remains buyer cash less purchased-material bills and incurred operating
+costs, with supplier cash separate. Lifetime order profit remains full contract revenue less lifetime
+costs and is provisional while production is incomplete. Cash received from buyers is the selected
+month's buyerPayments; Still to collect is paymentsPending across all orders. The redundant lifetime
+paymentsReceived dashboard field was removed. No buyer-payment rebalance is needed: seeded accrual
+months all exceed -20%; regression tests verify this independently of payment timing.
