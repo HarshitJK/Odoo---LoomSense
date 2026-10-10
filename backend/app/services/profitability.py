@@ -180,9 +180,14 @@ def profit_leakage(order_id: str, data: dict = None) -> dict:
             if overrun - overtime > 1:
                 leaks.append({"label": "Extra labour hours", "amount": round(overrun - overtime, 2)})
 
-    # 3. Rework
-    if cost["costs"]["rework"] > 0:
-        leaks.append({"label": "Rework", "amount": cost["costs"]["rework"]})
+    # 3. Rework and quality failures. Stage-gated inspections give one line per cost part (they replace the
+    #    single Rework line, so nothing is counted twice); old rolls keep their one Rework line.
+    from app.services import quality_gate  # imported here: quality_gate imports this module
+    legacy_rework = round(sum(r.get("reworkCost", 0) for r in data["rolls"]
+                              if r.get("orderId") == order_id and not r.get("inspectionType")), 2)
+    if legacy_rework > 0:
+        leaks.append({"label": "Rework", "amount": legacy_rework})
+    leaks.extend(quality_gate.leakage_entries(order_id, data["rolls"]))
 
     leaks.sort(key=lambda leak: leak["amount"], reverse=True)
     machine_id = _worst_machine(order, data)
@@ -203,7 +208,7 @@ def _worst_machine(order: dict, data: dict):
     by_machine = {}
     for r in data["rolls"]:
         if r.get("orderId") == order["orderId"] and r.get("machineId"):
-            by_machine[r["machineId"]] = by_machine.get(r["machineId"], 0) + r.get("reworkCost", 0)
+            by_machine[r["machineId"]] = by_machine.get(r["machineId"], 0) + costing.quality_loss(r)
     if by_machine and max(by_machine.values()) > 0:
         return max(by_machine, key=by_machine.get)
     return order.get("machineId")
@@ -216,8 +221,15 @@ def _recommendation(leaks: list, machine_id) -> str:
         steps.append("review yarn wastage")
     if "Overtime" in labels or "Extra labour hours" in labels:
         steps.append("reduce overtime")
-    if "Rework" in labels:
+    quality = {}
+    for leak in leaks:
+        if leak.get("type") == "QUALITY_FAILURE":
+            quality[leak["stage"]] = quality.get(leak["stage"], 0) + leak["amount"]
+    if "Rework" in labels or quality:
         steps.append(f"inspect Machine {machine_id}" if machine_id else "inspect the machine causing defects")
+    if quality:
+        from app.services.quality_gate import STAGE_LABEL
+        steps.append(f"check quality earlier at {STAGE_LABEL.get(max(quality, key=quality.get), 'the failing stage').lower()}")
     if not steps:
         return "No significant profit leakage found."
     text = ", ".join(steps[:-1]) + (" and " if len(steps) > 1 else "") + steps[-1]

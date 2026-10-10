@@ -15,7 +15,7 @@ public = TestClient(app, raise_server_exceptions=False)  # never logged in
 
 FORBIDDEN = ("cost", "revenue", "profit", "margin", "wage", "supplier", "alert", "paid", "trackingToken")
 PUBLIC_KEYS = {"orderId", "buyerName", "fabricType", "colour", "quantityMeters", "progress", "currentStage",
-               "stages", "expectedCompletion", "qualityStatus", "dispatchStatus"}
+               "stages", "expectedCompletion", "qualityStatus", "qualityMessage", "dispatchStatus"}
 NOT_FOUND = {"detail": "Tracking link not found"}
 
 

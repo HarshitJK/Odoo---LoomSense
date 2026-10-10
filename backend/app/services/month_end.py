@@ -59,7 +59,7 @@ def report(month):
         "rawMaterialBills": round(sum(p["totalAmount"] for p in purchases if in_month(p, "purchaseDate", month)), 2),
         "supplierPaymentsMade": round(sum(p["amount"] for bill in purchases for p in bill.get("payments", []) if in_month(p, "date", month)), 2),
         "workerWages": wages["total"], "machineOperatingCost": round(sum(m["machineCost"] for m in machines), 2),
-        "reworkCost": round(sum(q.get("reworkCost", 0) for q in quality), 2),
+        "reworkCost": round(sum(costing.quality_loss(q) for q in quality), 2),
         "otherExpenses": round(sum(e["amount"] for e in expenses), 2),
         "productionValue": round(production_value, 2), "machineProduction": machines, "orderProfitability": profits,
         "wageSummary": {"regularWages": wages["regular"], "overtime": wages["overtime"], "totalWorkforceCost": wages["total"]},

@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 
 from app import database as dbm
 from app.config import TRACKING_BASE_URL
+from app.services import quality_gate
 from app.utils.tokens import new_tracking_token
 
 NO_ID = {"_id": 0}
@@ -43,8 +44,8 @@ def ensure_indexes() -> None:
     dbm.orders().create_index("trackingToken", unique=True)
 
 
-def build_stages(status: str, progress: int) -> list:
-    current = STATUS_STAGE.get(status, 0)
+def build_stages(status: str, progress: int, index: int = None) -> list:
+    current = STATUS_STAGE.get(status, 0) if index is None else index
     stages = []
     for i, name in enumerate(STAGES):
         state = "DONE" if i < current else "IN_PROGRESS" if i == current else "PENDING"
@@ -78,9 +79,16 @@ def dispatch_status(status: str) -> str:
 def track_order(order: dict) -> dict:
     quantity = order.get("quantityMeters") or 0
     progress = min(round(order.get("producedMeters", 0) / quantity * 100), 100) if quantity else 0
-    stages = build_stages(order.get("status", ""), progress)
-    in_progress = [s["name"] for s in stages if s["state"] == "IN_PROGRESS"]
     rolls = list(dbm.quality_checks().find({"orderId": order["orderId"]}, NO_ID))
+    message = None
+    if quality_gate.is_gated(order):
+        # Stage-gated order: show only safe wording, never what failed, who, or what it cost
+        quality, message, index = quality_gate.buyer_quality(order, rolls)
+        stages = build_stages(order.get("status", ""), progress, index)
+    else:
+        quality = quality_status(rolls)
+        stages = build_stages(order.get("status", ""), progress)
+    in_progress = [s["name"] for s in stages if s["state"] == "IN_PROGRESS"]
     return {
         "orderId": order["orderId"],
         "buyerName": order.get("buyerName"),
@@ -91,7 +99,8 @@ def track_order(order: dict) -> dict:
         "currentStage": in_progress[0] if in_progress else "Dispatched",
         "stages": stages,
         "expectedCompletion": order.get("deadline"),
-        "qualityStatus": quality_status(rolls),
+        "qualityStatus": quality,
+        "qualityMessage": message,  # "Quality verification in progress" | "Rework verification" | "Quality approved" | None
         "dispatchStatus": dispatch_status(order.get("status", "")),
     }
 
@@ -106,6 +115,7 @@ def passport(roll: dict) -> dict:
     if not buyer and roll.get("orderId"):
         order = dbm.orders().find_one({"orderId": roll["orderId"]}, NO_ID)
         buyer = order.get("buyerName") if order else None
+    final, result = quality_gate.passport_status(roll)
     return {
         "rollId": roll["rollId"],
         "orderId": roll.get("orderId"),
@@ -114,7 +124,9 @@ def passport(roll: dict) -> dict:
         "machineId": roll.get("machineId"),
         "shift": roll.get("shift"),
         "producedAt": roll.get("producedAt") or roll.get("date"),
-        "qualityStatus": roll.get("status"),
-        "defects": roll.get("defects", []),
-        "reworkStatus": roll.get("reworkStatus") or default_rework_status(roll.get("status")),
+        # Until the final inspection has passed the passport is not final: no result and no defects are shown
+        "qualityStatus": result,
+        "final": final,
+        "defects": roll.get("defects", []) if final else [],
+        "reworkStatus": (roll.get("reworkStatus") or default_rework_status(roll.get("status"))) if final else "NOT_REQUIRED",
     }

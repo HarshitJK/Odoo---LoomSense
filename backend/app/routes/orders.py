@@ -6,7 +6,7 @@ from app.services.auth import current_user, owner
 
 from app import database as dbm
 from app.models.order import Order, OrderCreate, OrderUpdate, ReadinessRequest
-from app.services import costing, order_readiness, profitability, tracking
+from app.services import costing, order_readiness, profitability, quality_gate, tracking
 from app.utils.ids import next_order_id
 from app.utils.tokens import new_tracking_token
 
@@ -52,6 +52,7 @@ def create_order(body: OrderCreate, user=Depends(current_user)):
         **body.model_dump(),
     ).model_dump()
     doc.update(createdAt=datetime.now(timezone.utc).isoformat(), updatedAt=datetime.now(timezone.utc).isoformat(), productionHistoryComplete=True, materialHistoryComplete=True)
+    doc.update(quality_gate.new_order_fields(doc["quantityMeters"]))
     dbm.orders().insert_one(doc)
     profitability.refresh_order(doc["orderId"])
     return order_view(costing.get_order(doc["orderId"]), user)
@@ -62,12 +63,27 @@ def update_order(order_id: str, body: OrderUpdate, user=Depends(current_user)):
     order_id = normalize_id(order_id)
     changes = body.model_dump(exclude_unset=True)
     changes["updatedAt"] = datetime.now(timezone.utc).isoformat()
+    existing = dbm.orders().find_one({"orderId": order_id}, NO_ID)
+    if existing and quality_gate.is_gated(existing) and "status" in changes:
+        raise HTTPException(409, "This order moves through quality-gated stages. Use the stage complete and advance actions.")
     if changes:
         result = dbm.orders().update_one({"orderId": order_id}, {"$set": changes})
         if result.matched_count == 0:
             raise HTTPException(404, f"Order {order_id} not found")
     profitability.refresh_order(order_id)
     return order_view(costing.get_order(order_id), user)
+
+
+@router.post("/{order_id}/stage/complete")
+def complete_stage(order_id: str, user=Depends(current_user)):
+    """The current stage is finished: it waits for its quality inspection (or is complete if it needs none)."""
+    return order_view(quality_gate.complete_stage(order_id), user)
+
+
+@router.post("/{order_id}/stage/advance")
+def advance_stage(order_id: str, user=Depends(current_user)):
+    """Move to the next stage. 409 unless the current stage's quality inspection passed and there is no hold."""
+    return order_view(quality_gate.advance_stage(order_id), user)
 
 
 @router.post("/{order_id}/tracking/regenerate")
@@ -89,7 +105,7 @@ def order_view(order, user):
         order = {k: v for k, v in order.items() if k not in ("costs", "profit", "margin", "paidAmount", "otherCost", "yarnConsumedKg")}
     if order.get("trackingToken"):
         order = {**order, "trackingUrl": tracking.tracking_url(order["trackingToken"])}
-    return order
+    return {**order, **quality_gate.gate_view(order)}
 
 
 from pydantic import BaseModel, Field

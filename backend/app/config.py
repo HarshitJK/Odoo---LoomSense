@@ -41,5 +41,17 @@ PASSPORT_BASE_URL = os.getenv("PASSPORT_BASE_URL", "http://localhost:5173").rstr
 # Defaults to PASSPORT_BASE_URL (the public frontend) when unset.
 TRACKING_BASE_URL = (os.getenv("TRACKING_BASE_URL") or PASSPORT_BASE_URL).rstrip("/")
 
+# Stage-gated quality control. The list is ordered; an order moves through the stages one by one.
+QC_STAGES = ["RAW_MATERIAL", "WEAVING", "PROCESSING", "FINISHING", "FINAL_QC", "DISPATCH"]
+# Stages that need a PASSED inspection before the order may advance
+QC_MANDATORY_STAGES = ["WEAVING", "PROCESSING", "FINISHING", "FINAL_QC"]
+FIRST_OFF_STAGE = "WEAVING"
+DEFAULT_SAMPLE_METERS = 100   # metres woven before the first-off inspection
+# Existing order status shown for each stage (the order status words and buyer stages stay as they were)
+QC_STAGE_STATUS = {"RAW_MATERIAL": "NEW", "WEAVING": "WEAVING", "PROCESSING": "DYEING", "FINISHING": "DYEING",
+                   "FINAL_QC": "QUALITY_CHECK", "DISPATCH": "READY_FOR_DISPATCH"}
+# Index of the buyer-tracking stage (tracking.STAGES) each stage is shown under
+QC_STAGE_BUYER_INDEX = {"RAW_MATERIAL": 0, "WEAVING": 2, "PROCESSING": 3, "FINISHING": 3, "FINAL_QC": 4, "DISPATCH": 5}
+
 # Protects POST /api/demo/reset (header X-Admin-Key). Unset = the reset endpoint is disabled.
 ADMIN_KEY = os.getenv("ADMIN_KEY")

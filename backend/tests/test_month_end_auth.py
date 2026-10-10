@@ -28,7 +28,7 @@ def test_month_spanning_order_uses_activity_dates():
     assert september["buyerPaymentsReceived"] == 157000 + 106500
     assert next(o for o in october["orderProfitability"] if o["orderId"] == "ORD091")["orderDate"] == "2026-09-15"
     assert next(m for m in october["machineProduction"] if m["machineId"] == "W03")["producedMeters"] == 600
-    assert october["reworkCost"] == 8000
+    assert october["reworkCost"] == 8000 + 12700 + 26900  # old seed + quality demo orders B and C
     assert october["workerWages"] == costing.wages_summary("2026-10")["totalWorkforceCost"]
     assert october["rawMaterialBills"] == 950 * 180 + 780 * 165
     assert october["netCashResult"] == round(october["totalCashIn"] - october["totalExpenses"], 2)
@@ -81,7 +81,7 @@ def test_roles_and_public_allowlists():
     order = dbm.orders().find_one({"orderId": "ORD104"})
     r = public.get("/api/buyer/track/" + order["trackingToken"])
     assert r.status_code == 200
-    assert set(r.json()) == {"orderId", "buyerName", "fabricType", "colour", "quantityMeters", "progress", "currentStage", "stages", "expectedCompletion", "qualityStatus", "dispatchStatus"}
+    assert set(r.json()) == {"orderId", "buyerName", "fabricType", "colour", "quantityMeters", "progress", "currentStage", "stages", "expectedCompletion", "qualityStatus", "qualityMessage", "dispatchStatus"}
     assert public.get("/api/buyer/track/ORD104").status_code == 404
     assert public.get("/api/passport/RL10092").status_code == 200
 

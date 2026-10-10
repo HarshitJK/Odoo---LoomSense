@@ -27,6 +27,20 @@ class OrderNotFound(LookupError):
     pass
 
 
+# ---------- quality loss ----------
+
+def quality_loss(record: dict) -> float:
+    """Rework part of the cost for one inspection record. The ONLY place this is worked out.
+
+    Stage-gated records (they have an inspectionType) add up rework + extra labour + extra machine +
+    scrapped material. Old rolls store their whole cost impact in reworkCost, so only that is counted.
+    """
+    if record.get("inspectionType"):
+        return round(record.get("reworkCost", 0) + record.get("additionalLabourCost", 0)
+                     + record.get("additionalMachineCost", 0) + record.get("scrapMaterialCost", 0), 2)
+    return round(record.get("reworkCost", 0), 2)
+
+
 # ---------- loading ----------
 
 def load_data(order_id: str = None) -> dict:
@@ -176,7 +190,7 @@ def calculate_order_cost(order_id: str, data: dict = None) -> dict:
     runs = machine_hours(order, data)
     machine = round(sum(calculate_machine_cost(h, c) for _, h, c in runs), 2)
 
-    rework = round(sum(r.get("reworkCost", 0) for r in data["rolls"] if r.get("orderId") == order_id), 2)
+    rework = round(sum(quality_loss(r) for r in data["rolls"] if r.get("orderId") == order_id), 2)
 
     costs = {
         "rawMaterial": raw,

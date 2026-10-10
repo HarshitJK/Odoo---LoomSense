@@ -23,6 +23,10 @@ def next_roll_id() -> str:
     return _next(dbm.quality_checks(), "rollId", "RL", 10000)
 
 
+def next_inspection_id() -> str:
+    return _next(dbm.quality_checks(), "inspectionId", "INS", 1, width=5)
+
+
 def next_transaction_id() -> str:
     return _next(dbm.transactions(), "transactionId", "TXN", 1, width=3)
 

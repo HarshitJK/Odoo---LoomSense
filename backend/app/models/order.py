@@ -34,6 +34,16 @@ class Order(BaseModel):
     costs: OrderCosts = OrderCosts()
     profit: Optional[float] = None
     margin: Optional[float] = None
+    # stage-gated quality control (empty on old orders, which are not gated)
+    currentStage: Optional[str] = None
+    stageStatus: Optional[str] = None  # IN_PROGRESS | QC_PENDING | QUALITY_HOLD | COMPLETE
+    pendingInspectionType: Optional[str] = None  # FIRST_OFF | STAGE | FINAL while QC_PENDING
+    qualityHold: Optional[dict] = None
+    productionBlocked: bool = False
+    productionBlockReason: Optional[str] = None
+    requiresFirstOffQc: bool = True
+    firstOffPassed: bool = False
+    sampleMeters: float = 100
 
 
 class OrderCreate(BaseModel):
@@ -66,6 +76,8 @@ class OrderUpdate(BaseModel):
     yarnBatch: Optional[str] = None
     yarnConsumedKg: Optional[float] = Field(default=None, ge=0)
     otherCost: Optional[float] = Field(default=None, ge=0)
+    requiresFirstOffQc: Optional[bool] = None
+    sampleMeters: Optional[float] = Field(default=None, gt=0)
 
 
 class ReadinessRequest(BaseModel):

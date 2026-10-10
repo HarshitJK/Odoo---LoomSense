@@ -84,7 +84,7 @@ productionRate, efficiency, temperature, costPerHour, costPerMeter, orderMachine
 |---|---|---|
 | GET | `/api/quality`, `/api/quality/{rollId}` | Internal view incl. `reworkCost` and `impact`; list is newest first |
 | POST | `/api/quality` | `{orderId, machineId, yarnBatch, shift, status, defects[], affectedMeters, reworkStatus}`; `rollId` generated |
-| GET | `/api/passport/{rollId}` | **Public.** `rollId, orderId, buyerName, yarnBatch, machineId, shift, producedAt, qualityStatus, defects, reworkStatus` |
+| GET | `/api/passport/{rollId}` | **Public.** `rollId, orderId, buyerName, yarnBatch, machineId, shift, producedAt, qualityStatus, final, defects, reworkStatus` (see stage-gated quality control) |
 | GET | `/api/passport/{rollId}/qr` | **Public.** PNG QR pointing to `{PASSPORT_BASE_URL}/passport/{rollId}` |
 | GET | `/api/buyer/track/{token}` | **Public, buyer-safe.** Looks up by the private `trackingToken` only (order ids never match). `orderId, buyerName, fabricType, colour, quantityMeters, progress, currentStage, stages[], expectedCompletion, qualityStatus, dispatchStatus` |
 | POST | `/api/transactions` | `{orderId, amount, type?: BUYER_PAYMENT, date?}`; a buyer payment raises the order's `paidAmount` |
@@ -93,6 +93,86 @@ productionRate, efficiency, temperature, costPerHour, costPerMeter, orderMachine
 `impact{additionalLabour, machineCost, materialLoss, total}`, `marginBefore`, `marginAfter`; the total becomes the roll's
 `reworkCost` and flows into the order cost. `stages[]` is six `{name, state: DONE|IN_PROGRESS|PENDING}` (Weaving also has `progress`).
 `qualityStatus` for buyers is `NOT_STARTED`, `PENDING`, `PASSED` or `IN_REVIEW`.
+
+## Stage-gated quality control
+
+A defect is caught in the stage where it happens. Orders created through `POST /api/orders` are gated; orders and
+quality records from before this feature are not (an old record without a `stage` is a final-QC roll, an old order has
+`gated: false` and a stage derived from its status). Everything below is enforced in `services/quality_gate.py`.
+
+**Stages** (`QC_STAGES` in `config.py`): `RAW_MATERIAL, WEAVING, PROCESSING, FINISHING, FINAL_QC, DISPATCH`. They map onto the
+existing order status (`NEW, WEAVING, DYEING, DYEING, QUALITY_CHECK, READY_FOR_DISPATCH`) and the six buyer stages.
+`WEAVING, PROCESSING, FINISHING, FINAL_QC` need a PASSED inspection before the order may advance (`QC_MANDATORY_STAGES`).
+
+**Order fields** (added to the order object): `currentStage`, `stageStatus` (`IN_PROGRESS | QC_PENDING | QUALITY_HOLD | COMPLETE`),
+`pendingInspectionType` (`FIRST_OFF | STAGE | FINAL` while `QC_PENDING`), `qualityHold` (`null` or `holdReason, failedInspectionId,
+failedStage, failedInspectionType, defectType, defectSeverity, affectedMeters, holdStartedAt`), `productionBlocked`,
+`productionBlockReason`, `requiresFirstOffQc` (default true), `firstOffPassed`, `sampleMeters` (default 100, never more than
+the order quantity), and `gated`.
+
+**Rules**
+1. `POST /api/orders/{id}/stage/complete` (owner, production manager): the stage is finished and becomes `QC_PENDING`
+   (a stage without mandatory QC becomes `COMPLETE`). Weaving can only be completed after the first-off passed and the
+   whole quantity is woven. Entering `FINAL_QC` goes straight to `QC_PENDING` (final inspection).
+2. `POST /api/orders/{id}/stage/advance` (owner, production manager): refused with **409** unless the stage is `COMPLETE`
+   and its latest stage inspection is `PASSED`. Message: `Order cannot advance to PROCESSING until WEAVING QC passes.`
+   While on hold: `Order cannot advance to PROCESSING while WEAVING is on quality hold.`
+3. **First-off**: when a weaving order reaches `sampleMeters` and no FIRST_OFF inspection has passed, the order becomes
+   `QC_PENDING` (`pendingInspectionType: FIRST_OFF`) and production is blocked. The simulator and
+   `POST /api/machines/{id}/readings` add no metres, run time or cost to it. A passed first-off does not replace the
+   stage-completion inspection.
+4. A `FAILED` or `REWORK` inspection puts the order on `QUALITY_HOLD` and fills `qualityHold`. While on hold, `complete`,
+   `advance` and every inspection except a REINSPECTION of the open failure return 409. Machine data, assignments and
+   production history are kept. `PATCH /api/orders/{id}` with `status` is refused (409) for gated orders.
+5. `PATCH /api/quality/{inspectionId}/corrective-action` sets `NONE | REWORK_CURRENT_STAGE | RESTART_FROM_CHECKPOINT |
+   SCRAP_AFFECTED_QUANTITY | FULL_RESTART` on the failed inspection, once (409 if already set). `FULL_RESTART` needs
+   `defectSeverity: CRITICAL` (422 otherwise). Optional cost fields replace the cost parts of that record.
+6. A REINSPECTION (`inspectionType: REINSPECTION`, `reinspectionOf: <failed inspectionId>`) needs the corrective action
+   first (409). If it is `PASSED` the hold is released: weaving restarts only the affected metres after
+   `RESTART_FROM_CHECKPOINT` (and after `SCRAP_AFFECTED_QUANTITY` in weaving), `FULL_RESTART` goes back to the first
+   production stage with 0 metres, otherwise the stage becomes `COMPLETE`. If it fails again the hold stays and the new
+   failure is the open one. The original failed inspection is never overwritten or deleted.
+7. The simulator never advances or completes orders that are on hold, waiting for first-off or in `QC_PENDING`. When
+   weaving finishes it sets `QC_PENDING` (event `stage_finished`); a reached sample length sets event `first_off_pending`.
+   A machine running an order still at `RAW_MATERIAL` completes that stage and starts weaving.
+
+**Inspection record** (`qualityChecks`): the old roll fields plus `inspectionId` (unique, `INS00001`), `stage`,
+`inspectionType` (`INCOMING_MATERIAL | FIRST_OFF | STAGE | FINAL | REINSPECTION`), `defectType`, `defectSeverity`
+(`LOW | MEDIUM | HIGH | CRITICAL`), `inspectorId`, `notes`, `correctiveAction`, `additionalLabourCost`,
+`additionalMachineCost`, `scrapMaterialCost`, `reinspectionOf`, `inspectionDate`, `createdAt`, `updatedAt`. Indexes on
+`inspectionId` (unique), `orderId`, `stage`, `status`, `machineId`, `inspectionDate`. Old records get an `inspectionId` at startup.
+`status` keeps the words `PASSED, FAILED, REWORK, PENDING`.
+
+| Method | Path | Who | Notes |
+|---|---|---|---|
+| POST | `/api/quality` | QC worker, production manager, owner | Stage inspection. For a gated order `stage` defaults to the order's current stage and `inspectionType` to `INCOMING_MATERIAL` (raw material), `STAGE`, or `FINAL` (final QC). `defectSeverity` is required when the status is not PASSED. Costs not entered are estimated from `affectedMeters` (extra labour, extra machine time, yarn lost). A FINAL inspection gets a `rollId`. A body without a stage for an old order is the old roll check |
+| PATCH | `/api/quality/{inspectionId}/corrective-action` | QC worker, production manager, owner | `{correctiveAction, notes?, reworkCost?, additionalLabourCost?, additionalMachineCost?, scrapMaterialCost?}` |
+| GET | `/api/quality/pending` | internal | Orders waiting for an inspection: `orderId, stage, inspectionType, machineId, sampleMeters, producedMeters` |
+| GET | `/api/quality/holds` | internal | Orders on hold: `orderId, failedStage, defectType, defectSeverity, affectedMeters, failedInspectionId, correctiveAction, needsCorrectiveAction, holdReason, holdStartedAt` |
+| GET | `/api/quality/order/{orderId}/timeline` | internal | `stages[]` (all six, with `state`) each with its `inspections[]` in time order; failed ones list `reinspectedBy[]`, reinspections carry `reinspectionOf`; old rolls appear under `FINAL_QC` with `legacy: true` |
+| GET | `/api/quality/analytics?month=YYYY-MM` | **owner only** | `totalInspections, passRate, failureRate, reworkRate, totalQualityLoss, mostCommonDefect, highestLossStage, machineWithMostFailures, ordersOnQualityHold, holdOrderIds` |
+| POST | `/api/orders/{id}/stage/complete`, `/stage/advance` | owner, production manager | See the rules above |
+
+Only the owner receives cost fields (`reworkCost, additionalLabourCost, additionalMachineCost, scrapMaterialCost, impact,
+marginBefore, marginAfter`). The QC worker cannot read orders or any finance route.
+
+**Cost**: the quality loss of an order is `reworkCost + additionalLabourCost + additionalMachineCost + scrapMaterialCost`
+summed over its stage inspections (`costing.quality_loss`; an old roll counts its `reworkCost` only). It is the single source for
+`costs.rework`, so profit and margin change when an inspection is saved or its corrective action is updated, and nothing is
+counted twice.
+
+**Profit leakage** (`GET /api/finance/profit-leakage`): for an order with stage inspections the single `Rework` line is replaced
+by `leaks[]` entries `{type: "QUALITY_FAILURE", component, stage, orderId, amount, message, label}` where `component` is
+`STAGE_FAILURE` (amount 0), `REWORK`, `EXTRA_LABOUR`, `EXTRA_MACHINE`, `SCRAP` or `REPEATED_FAILURE` (amount 0).
+
+**Buyer tracking** adds `qualityMessage`: `Quality verification in progress`, `Rework verification`, `Quality approved` or
+`null`. For gated orders `qualityStatus` follows the same state, and the stages follow `currentStage`. No worker, wage, machine
+problem, defect, severity, quality loss, profit or supplier data is ever returned.
+
+**Fabric passport** adds `final`. It is `true` for old rolls and, for gated orders, only after a PASSED FINAL inspection. Before
+that `qualityStatus` is `PENDING` and `defects` is empty. It never contains costs.
+
+**Machine object** adds `orderStage, stageStatus, holdReason, blockReason` (null for orders that are not gated).
 
 ## Finance
 | Method | Path | Notes |

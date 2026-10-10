@@ -98,7 +98,7 @@ def test_passport_fields_and_no_internal_data():
     assert res.status_code == 200
     passport = res.json()
     assert set(passport) == {"rollId", "orderId", "buyerName", "yarnBatch", "machineId", "shift",
-                             "producedAt", "qualityStatus", "defects", "reworkStatus"}
+                             "producedAt", "qualityStatus", "final", "defects", "reworkStatus"}
     assert passport["buyerName"] == "ABC Garments"
     assert passport["qualityStatus"] == "PASSED"
     assert passport["yarnBatch"] == "YB82"
@@ -133,7 +133,7 @@ def test_buyer_tracking_never_exposes_internal_fields():
         data = res.json()
         assert_public(data)
         assert set(data) == {"orderId", "buyerName", "fabricType", "colour", "quantityMeters", "progress",
-                             "currentStage", "stages", "expectedCompletion", "qualityStatus",
+                             "currentStage", "stages", "expectedCompletion", "qualityStatus", "qualityMessage",
                              "dispatchStatus"}
         text = res.text.lower()
         assert "supplier" not in text

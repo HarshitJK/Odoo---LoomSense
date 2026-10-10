@@ -13,7 +13,7 @@ from app.models.order import Order
 from app.models.quality import QualityCheck
 from app.models.transaction import Transaction
 from app.models.worker import Worker
-from app.services import profitability, tracking
+from app.services import profitability, quality_gate, tracking
 
 REV = {"ORD071": 270000, "ORD078": 295000, "ORD085": 157000, "ORD091": 213000,
        "ORD104": 356000, "ORD108": 285000}
@@ -169,7 +169,9 @@ def main():
             rollId=q[0], orderId=q[1], buyerName=q[2], machineId=q[3], yarnBatch=q[4],
             shift=q[5], status=q[6], defects=q[7], reworkCost=q[8], date=q[9],
             producedAt=q[9] + "T14:00:00", affectedMeters=AFFECTED.get(q[0], 0),
-            reworkStatus=REWORK_STATUS.get(q[0])).model_dump() for q in QUALITY],
+            reworkStatus=REWORK_STATUS.get(q[0]), inspectionId=f"INS{n:05d}", inspectionDate=q[9],
+            createdAt=q[9] + "T14:00:00", updatedAt=q[9] + "T14:00:00").model_dump()
+            for n, q in enumerate(QUALITY, start=1)],
         dbm.transactions(): build_transactions(),
     }
     counts = {}
@@ -180,11 +182,15 @@ def main():
         print(f"{coll.name}: {len(docs)} inserted")
 
     seed_financial_history()
+    quality_orders = seed_quality_demo()
 
     # Compute costs, profit and margin from the operational data and store them on each order
     for o in ORDERS:
         p = profitability.refresh_order(o[0])
         print(f"  {o[0]}: revenue {p['revenue']:,.0f}  cost {p['totalCost']:,.0f}  margin {p['margin']}%")
+    for order_id in quality_orders:
+        p = profitability.refresh_order(order_id)
+        print(f"  {order_id}: revenue {p['revenue']:,.0f}  cost {p['totalCost']:,.0f}  margin {p['margin']}%  (quality demo)")
     return counts
 
 
@@ -240,6 +246,89 @@ def seed_financial_history():
     ord104 = dbm.orders().find_one({"orderId": "ORD104"}, {"trackingToken": 1})
     if ord104:
         print("ORD104 buyer tracking link:", tracking.tracking_url(ord104["trackingToken"]))
+
+
+# ---- stage-gated quality demo: three orders that show what stage QC saves (or costs) ----
+# Order A: first-off passed and the weaving QC passed, now in processing. Normal margin.
+# Order B: weaving QC failed (HIGH), held, reworked, reinspection passed, now in processing. Extra costs.
+# Order C: processing QC failed (CRITICAL), material scrapped, restart from the checkpoint. Still on hold.
+DEMO_STAGE_ORDERS = [
+    # orderId, buyerId, buyer, colour, quantity, revenue, yarnBatch, workers (indexes), first workday
+    ("ORD109", "BUY006", "Silverline Mills", "White", 600, 105000, "YB83", [0, 1], "2026-10-06"),
+    ("ORD110", "BUY005", "Greenline Exports", "Red", 600, 108000, "YB84", [2, 3], "2026-10-05"),
+    ("ORD111", "BUY003", "Metro Apparel", "Grey", 500, 90000, "YB86", [4, 5], "2026-10-04"),
+]
+
+
+def _inspection(n, order_id, stamp, **fields):
+    """One seeded inspection; ids continue after the old seeded rolls."""
+    rec = QualityCheck(inspectionId=f"INS{len(QUALITY) + n:05d}", orderId=order_id, machineId="W05", shift="A",
+                       inspectorId="qc@loomsense.demo", date=stamp[:10], inspectionDate=stamp[:10], producedAt=stamp,
+                       createdAt=stamp, updatedAt=stamp, **fields).model_dump()
+    rec["impact"] = {"additionalLabour": rec["additionalLabourCost"], "machineCost": rec["additionalMachineCost"],
+                     "materialLoss": rec["scrapMaterialCost"],
+                     "total": rec["reworkCost"] + rec["additionalLabourCost"] + rec["additionalMachineCost"] + rec["scrapMaterialCost"]}
+    return rec
+
+
+def seed_quality_demo():
+    machine, batches = {"rate": 100, "cost": 450}, {b["batchId"]: b for b in dbm.inventory().find({})}
+    gate = {"A": {"currentStage": "PROCESSING", "stageStatus": "IN_PROGRESS", "firstOffPassed": True},
+            "B": {"currentStage": "PROCESSING", "stageStatus": "IN_PROGRESS", "firstOffPassed": True},
+            "C": {"currentStage": "PROCESSING", "stageStatus": "QUALITY_HOLD", "firstOffPassed": True,
+                  "productionBlocked": True,
+                  "productionBlockReason": "Processing stage inspection failed: Dye shade variation",
+                  "qualityHold": {"holdReason": "Processing stage inspection failed: Dye shade variation",
+                                  "failedInspectionId": f"INS{len(QUALITY) + 8:05d}", "failedStage": "PROCESSING",
+                                  "failedInspectionType": "STAGE", "defectType": "Dye shade variation",
+                                  "defectSeverity": "CRITICAL", "affectedMeters": 150,
+                                  "holdStartedAt": "2026-10-09T11:00:00"}}}
+    ids = []
+    for key, (oid, buyer_id, buyer, colour, qty, revenue, batch, workers, first_day) in zip("ABC", DEMO_STAGE_ORDERS):
+        order = Order(orderId=oid, buyerId=buyer_id, buyerName=buyer, fabricType="Cotton", colour=colour, quantityMeters=qty,
+                      producedMeters=qty, status="DYEING", machineId="W05", deadline="2026-10-28T18:00:00",
+                      orderDate=first_day, revenue=revenue, yarnBatch=batch, otherCost=2000, sampleMeters=100).model_dump()
+        order.update(productionHistoryComplete=True, materialHistoryComplete=True, createdAt=first_day + "T09:00:00",
+                     updatedAt=datetime.now(timezone.utc).isoformat(), **gate[key])
+        dbm.orders().insert_one(order)
+        ids.append(oid)
+        hours = qty / machine["rate"]
+        dbm.db.machineProductionEvents.insert_one({"eventId": f"SEEDQ{oid}", "machineId": "W05", "orderId": oid,
+            "timestamp": first_day + "T12:00:00", "producedMetersDelta": qty, "runtimeMinutes": hours * 60,
+            "machineCost": hours * machine["cost"], "efficiency": 0.9, "completed": True, "source": "demo"})
+        kg = qty * 0.59
+        dbm.db.materialConsumption.insert_one({"consumptionId": f"SEEDQ{oid}", "orderId": oid, "batchId": batch, "date": first_day,
+            "quantityKg": kg, "costPerKg": batches[batch]["costPerKg"], "cost": kg * batches[batch]["costPerKg"]})
+        day = date.fromisoformat(first_day)
+        for offset in range(3):
+            for w in workers:
+                dbm.attendance().insert_one({**Attendance(workerId=WORKERS[w][0], orderId=oid, machineId="W05", hoursWorked=8,
+                    overtimeHours=0, date=(day + timedelta(days=offset)).isoformat()).model_dump(), "hourlyRate": WORKERS[w][2]})
+
+    q = []
+    # Order A: both inspections passed
+    q.append(_inspection(1, "ORD109", "2026-10-06T10:30:00", stage="WEAVING", inspectionType="FIRST_OFF", status="PASSED",
+                         notes="First 100 m checked on the loom."))
+    q.append(_inspection(2, "ORD109", "2026-10-08T15:00:00", stage="WEAVING", inspectionType="STAGE", status="PASSED"))
+    # Order B: weaving failed, reworked, reinspection passed
+    q.append(_inspection(3, "ORD110", "2026-10-05T10:30:00", stage="WEAVING", inspectionType="FIRST_OFF", status="PASSED"))
+    q.append(_inspection(4, "ORD110", "2026-10-07T15:00:00", stage="WEAVING", inspectionType="STAGE", status="FAILED",
+                         defectType="Weft break", defects=["Weft break"], defectSeverity="HIGH", affectedMeters=80,
+                         correctiveAction="REWORK_CURRENT_STAGE", reworkStatus="COMPLETED", reworkCost=6500,
+                         additionalLabourCost=3800, additionalMachineCost=2400, notes="Weft breaks along 80 m."))
+    q.append(_inspection(5, "ORD110", "2026-10-08T11:00:00", stage="WEAVING", inspectionType="REINSPECTION", status="PASSED",
+                         reinspectionOf=f"INS{len(QUALITY) + 4:05d}"))
+    # Order C: processing failed (CRITICAL), material scrapped, restart from the checkpoint, reinspection still to do
+    q.append(_inspection(6, "ORD111", "2026-10-04T10:30:00", stage="WEAVING", inspectionType="FIRST_OFF", status="PASSED"))
+    q.append(_inspection(7, "ORD111", "2026-10-06T15:00:00", stage="WEAVING", inspectionType="STAGE", status="PASSED"))
+    q.append(_inspection(8, "ORD111", "2026-10-09T11:00:00", stage="PROCESSING", inspectionType="STAGE", status="FAILED",
+                         defectType="Dye shade variation", defects=["Dye shade variation"], defectSeverity="CRITICAL",
+                         affectedMeters=150, correctiveAction="RESTART_FROM_CHECKPOINT", reworkStatus="IN_PROGRESS",
+                         reworkCost=4000, additionalLabourCost=5200, additionalMachineCost=3100, scrapMaterialCost=14600,
+                         notes="Shade varies across the batch. Affected material scrapped."))
+    dbm.quality_checks().insert_many(q)
+    quality_gate.ensure_indexes()
+    return ids
 
 
 if __name__ == "__main__":

@@ -13,7 +13,7 @@ client = TestClient(app)
 VIEW_FIELDS = {
     "machineId", "name", "status", "currentOrderId", "producedMeters", "targetMeters", "progress",
     "productionRate", "efficiency", "temperature", "costPerHour", "costPerMeter", "orderMachineCost",
-    "estimatedCompletion", "runtimeToday",
+    "estimatedCompletion", "runtimeToday", "orderStage", "stageStatus", "holdReason", "blockReason",
 }
 
 

@@ -15,7 +15,7 @@ from datetime import datetime, timedelta
 
 from app import database as dbm
 from app.config import SIMULATOR_AUTOSTART
-from app.services import profitability, production_history, materials
+from app.services import profitability, production_history, materials, quality_gate
 
 log = logging.getLogger("loomsense.simulator")
 NO_ID = {"_id": 0}
@@ -92,8 +92,18 @@ def build_views(machines: list, orders: dict) -> list:
             "orderMachineCost": round(produced / rate * m["costPerHour"], 2) if rate and m.get("currentOrderId") else 0.0,
             "estimatedCompletion": eta,
             "runtimeToday": round(m.get("runtimeToday", 0), 2),
+            **_stage_view(order),
         })
     return views
+
+
+def _stage_view(order) -> dict:
+    """Quality-gate state of the machine's order, for the production screen."""
+    if not order or not quality_gate.is_gated(order):
+        return {"orderStage": None, "stageStatus": None, "holdReason": None, "blockReason": None}
+    hold = order.get("qualityHold") or {}
+    return {"orderStage": order["currentStage"], "stageStatus": order["stageStatus"],
+            "holdReason": hold.get("holdReason"), "blockReason": order.get("productionBlockReason")}
 
 
 def get_snapshot() -> list:
@@ -131,6 +141,24 @@ def _complete_order(order_id: str, machine_id: str) -> dict:
         machine_id, order_id)
 
 
+def _stage_finished(order_id: str, machine_id: str) -> dict:
+    """A gated order finished weaving: it now waits for its stage inspection. Its machines go idle."""
+    dbm.machines().update_many({"currentOrderId": order_id, "status": "RUNNING"}, {"$set": {"status": "IDLE"}})
+    return event_message("stage_finished", f"Order {order_id} finished weaving on {machine_id}. Waiting for the quality inspection.",
+                         machine_id, order_id)
+
+
+def _gate_events(order_id: str, machine_id: str) -> list:
+    """Quality-gate events after metres were added to a gated order."""
+    outcome = quality_gate.after_production(order_id)
+    if outcome == "first_off":
+        return [event_message("first_off_pending", f"Order {order_id} reached the sample length on {machine_id}. "
+                                                   "Production is paused until the first-off inspection passes.", machine_id, order_id)]
+    if outcome == "stage_finished":
+        return [_stage_finished(order_id, machine_id)]
+    return []
+
+
 def apply_reading(machine_id: str, reading: dict) -> tuple:
     """Apply one reading sent by a real (or replayed) machine. Returns (events, machine views).
 
@@ -147,16 +175,22 @@ def apply_reading(machine_id: str, reading: dict) -> tuple:
         delta = reading.get("producedMetersDelta") or 0
         order = dbm.orders().find_one({"orderId": m.get("currentOrderId")}, NO_ID) if m.get("currentOrderId") else None
         finished = False
-        if delta and order:
+        gated = bool(order) and quality_gate.is_gated(order)
+        if gated:
+            order = quality_gate.prepare_for_production(order)
+        # A gated order on hold, waiting for QC or first-off, or not weaving does not take new metres
+        if delta and order and quality_gate.production_allowed(order):
             room = max(order["quantityMeters"] - order["producedMeters"], 0)
-            step = materials.consume(order, min(delta, room))
+            step = materials.consume(order, min(quality_gate.limit_for_first_off(order, delta), room))
             changes["producedMeters"] = round(m.get("producedMeters", 0) + step, 2)
             total = round(order["producedMeters"] + step, 2)
             dbm.orders().update_one({"orderId": order["orderId"]}, {"$set": {"producedMeters": total}})
-            finished = step > 0 and total >= order["quantityMeters"]
+            finished = not gated and step > 0 and total >= order["quantityMeters"]
             effective = {**m, **changes}
             rate = effective.get("productionRate") or 1
             production_history.record(effective, order, step, step / rate, reading.get("timestamp"), finished)
+            if gated:
+                events.extend(_gate_events(order["orderId"], machine_id))
         if changes:
             dbm.machines().update_one({"machineId": machine_id}, {"$set": changes})
         if changes.get("status") == "DOWN":
@@ -186,19 +220,30 @@ def _tick() -> tuple:
         order = dbm.orders().find_one({"orderId": m.get("currentOrderId")}, NO_ID) if m.get("currentOrderId") else None
         finished = False
         step = 0
-        if order and m.get("productionRate") and order["producedMeters"] < order["quantityMeters"]:
+        gated = bool(order) and quality_gate.is_gated(order)
+        if gated:
+            order = quality_gate.prepare_for_production(order)
+        # A gated order on hold, waiting for QC or first-off, or not weaving is left alone: no metres, no run time
+        held = gated and not quality_gate.production_allowed(order)
+        if held:
+            changes.pop("runtimeToday", None)
+        if order and not held and m.get("productionRate") and order["producedMeters"] < order["quantityMeters"]:
             step = m["productionRate"] * factory_hours * random.uniform(0.6, 1.4)
+            step = quality_gate.limit_for_first_off(order, step)
             step = materials.consume(order, min(step, order["quantityMeters"] - order["producedMeters"]))
             changes["producedMeters"] = round(m["producedMeters"] + step, 2)
             order_total = round(order["producedMeters"] + step, 2)
-            finished = order_total >= order["quantityMeters"]
+            finished = not gated and order_total >= order["quantityMeters"]
             dbm.orders().update_one({"orderId": order["orderId"]}, {"$set": {"producedMeters": order_total}})
             touched.add(order["orderId"])
-        production_history.record({**m, **changes}, order, round(step, 2), factory_hours, completed=finished)
+        if not held:
+            production_history.record({**m, **changes}, order, round(step, 2), factory_hours, completed=finished)
         dbm.machines().update_one({"machineId": machine_id}, {"$set": changes})
 
         if finished:
             events.append(_complete_order(order["orderId"], machine_id))
+        elif gated and not held:
+            events.extend(_gate_events(order["orderId"], machine_id))
 
     for order_id in touched:
         profitability.refresh_order(order_id)

@@ -13,7 +13,7 @@ from app.config import CORS_ORIGINS
 from app.routes import (
     auth, purchases, buyers, demo, finance, health, inventory, machines, orders, quality, transactions, workers,
 )
-from app.services import machine_simulator, tracking
+from app.services import machine_simulator, quality_gate, tracking
 from app.utils.tokens import mask_tracking_path
 from app.services.costing import OrderNotFound
 from app.websocket import machines as machines_ws
@@ -27,6 +27,7 @@ async def lifespan(app: FastAPI):
     """Run the machine simulator in the same process as the API."""
     try:
         tracking.ensure_indexes()  # backfill missing tracking tokens, then enforce uniqueness
+        quality_gate.ensure_indexes()  # old quality records get an inspectionId, then the indexes are created
     except PyMongoError:
         log.warning("Could not prepare the orders.trackingToken index; MongoDB is not reachable yet")
     machine_simulator.add_listener(machines_ws.manager.broadcast)
