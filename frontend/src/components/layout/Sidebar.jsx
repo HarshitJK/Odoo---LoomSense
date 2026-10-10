@@ -1,9 +1,9 @@
 import { NavLink } from "react-router-dom";
-import { LayoutDashboard, ClipboardList, Boxes, Factory, Users, ShieldCheck } from "lucide-react";
+import { LayoutDashboard, Truck, Boxes, Factory, Users, ShieldCheck } from "lucide-react";
 
 const links = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/orders", label: "Orders", icon: ClipboardList },
+  { to: "/track", label: "Buyer Tracking", icon: Truck },
   { to: "/inventory", label: "Inventory", icon: Boxes },
   { to: "/production", label: "Production", icon: Factory },
   { to: "/workers", label: "Workers", icon: Users },
