@@ -1,0 +1,96 @@
+"""Buyer-safe order tracking and the public fabric passport.
+
+Everything returned here is public: never add costs, revenue, profit, margin, wages,
+supplier details or internal alerts.
+"""
+from app import database as dbm
+
+NO_ID = {"_id": 0}
+
+STAGES = ["Raw Material Allocated", "Spinning", "Weaving", "Dyeing", "Quality Check", "Ready for Dispatch"]
+WEAVING = 2
+
+# Index of the stage currently in progress; 6 means every stage is done.
+STATUS_STAGE = {
+    "NEW": 0, "PENDING": 0, "SPINNING": 1, "WEAVING": 2, "DYEING": 3,
+    "QUALITY_CHECK": 4, "REWORK": 4, "READY_FOR_DISPATCH": 5,
+    "DISPATCHED": 6, "COMPLETED": 6, "DELIVERED": 6,
+}
+DISPATCHED = {"DISPATCHED", "COMPLETED", "DELIVERED"}
+
+
+def build_stages(status: str, progress: int) -> list:
+    current = STATUS_STAGE.get(status, 0)
+    stages = []
+    for i, name in enumerate(STAGES):
+        state = "DONE" if i < current else "IN_PROGRESS" if i == current else "PENDING"
+        stage = {"name": name, "state": state}
+        if i == WEAVING and state == "IN_PROGRESS":
+            stage["progress"] = progress
+        stages.append(stage)
+    return stages
+
+
+def quality_status(rolls: list) -> str:
+    """PASSED / IN_REVIEW / PENDING / NOT_STARTED. Internal rework details stay hidden."""
+    if not rolls:
+        return "NOT_STARTED"
+    statuses = {r.get("status") for r in rolls}
+    if statuses & {"FAILED", "REWORK"}:
+        return "IN_REVIEW"
+    if statuses == {"PASSED"}:
+        return "PASSED"
+    return "PENDING"
+
+
+def dispatch_status(status: str) -> str:
+    if status in DISPATCHED:
+        return "DISPATCHED"
+    if status == "READY_FOR_DISPATCH":
+        return "READY_FOR_DISPATCH"
+    return "NOT_DISPATCHED"
+
+
+def track_order(order: dict) -> dict:
+    quantity = order.get("quantityMeters") or 0
+    progress = min(round(order.get("producedMeters", 0) / quantity * 100), 100) if quantity else 0
+    stages = build_stages(order.get("status", ""), progress)
+    in_progress = [s["name"] for s in stages if s["state"] == "IN_PROGRESS"]
+    rolls = list(dbm.quality_checks().find({"orderId": order["orderId"]}, NO_ID))
+    return {
+        "orderId": order["orderId"],
+        "buyerName": order.get("buyerName"),
+        "fabricType": order.get("fabricType"),
+        "colour": order.get("colour"),
+        "quantityMeters": quantity,
+        "progress": progress,
+        "currentStage": in_progress[0] if in_progress else "Dispatched",
+        "stages": stages,
+        "expectedCompletion": order.get("deadline"),
+        "qualityStatus": quality_status(rolls),
+        "dispatchStatus": dispatch_status(order.get("status", "")),
+    }
+
+
+def default_rework_status(quality: str) -> str:
+    return {"FAILED": "PENDING", "REWORK": "IN_PROGRESS"}.get(quality, "NOT_REQUIRED")
+
+
+def passport(roll: dict) -> dict:
+    """Public passport of one roll. No cost, impact or profit fields."""
+    buyer = roll.get("buyerName")
+    if not buyer and roll.get("orderId"):
+        order = dbm.orders().find_one({"orderId": roll["orderId"]}, NO_ID)
+        buyer = order.get("buyerName") if order else None
+    return {
+        "rollId": roll["rollId"],
+        "orderId": roll.get("orderId"),
+        "buyerName": buyer,
+        "yarnBatch": roll.get("yarnBatch"),
+        "machineId": roll.get("machineId"),
+        "shift": roll.get("shift"),
+        "producedAt": roll.get("producedAt") or roll.get("date"),
+        "qualityStatus": roll.get("status"),
+        "defects": roll.get("defects", []),
+        "reworkStatus": roll.get("reworkStatus") or default_rework_status(roll.get("status")),
+    }

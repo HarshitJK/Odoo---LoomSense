@@ -77,6 +77,10 @@ QUALITY = [
     ("RL10093", "ORD104", "ABC Garments", "W01", "YB82", "A", "PASSED", [], 0, "2026-10-09"),
 ]
 
+# Seeded rework details (metres affected, rework progress) for the bad rolls
+AFFECTED = {"RL10031": 90, "RL10088": 120, "RL10089": 100}
+REWORK_STATUS = {"RL10031": "COMPLETED", "RL10088": "COMPLETED", "RL10089": "IN_PROGRESS"}
+
 # Share of the order revenue the buyer has paid so far
 PAID = {"ORD071": 1.0, "ORD078": 1.0, "ORD085": 1.0, "ORD091": 0.5, "ORD104": 0.4}
 PAYMENT_DATES = {"ORD071": "2026-07-28", "ORD078": "2026-08-30", "ORD085": "2026-09-27",
@@ -159,19 +163,23 @@ def main():
         dbm.attendance(): build_attendance(),
         dbm.quality_checks(): [QualityCheck(
             rollId=q[0], orderId=q[1], buyerName=q[2], machineId=q[3], yarnBatch=q[4],
-            shift=q[5], status=q[6], defects=q[7], reworkCost=q[8],
-            date=q[9]).model_dump() for q in QUALITY],
+            shift=q[5], status=q[6], defects=q[7], reworkCost=q[8], date=q[9],
+            producedAt=q[9] + "T14:00:00", affectedMeters=AFFECTED.get(q[0], 0),
+            reworkStatus=REWORK_STATUS.get(q[0])).model_dump() for q in QUALITY],
         dbm.transactions(): build_transactions(),
     }
+    counts = {}
     for coll, docs in data.items():
         coll.delete_many({})
         coll.insert_many(docs)
+        counts[coll.name] = len(docs)
         print(f"{coll.name}: {len(docs)} inserted")
 
     # Compute costs, profit and margin from the operational data and store them on each order
     for o in ORDERS:
         p = profitability.refresh_order(o[0])
         print(f"  {o[0]}: revenue {p['revenue']:,.0f}  cost {p['totalCost']:,.0f}  margin {p['margin']}%")
+    return counts
 
 
 if __name__ == "__main__":

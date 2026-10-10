@@ -120,5 +120,21 @@ check("finance order 404", "GET", "/api/finance/orders/NOPE", expect=404)
 check("wages summary", "GET", "/api/workers/wages/summary?month=2026-10",
       test=lambda d: d["totalWorkforceCost"] > 0 and len(d["labourCostPerOrder"]) >= 3)
 
+# Quality impact, passport, buyer tracking, transactions (Phase 5)
+rework = check("quality rework", "POST", "/api/quality", 201,
+               {"orderId": "ORD104", "yarnBatch": "YB82", "status": "REWORK", "affectedMeters": 120},
+               test=lambda d: d["impact"]["total"] > 0 and d["marginAfter"] < d["marginBefore"])
+check("passport", "GET", f"/api/passport/{rework['rollId']}", test=lambda d: d["qualityStatus"] == "REWORK")
+check("passport 404", "GET", "/api/passport/NOPE", expect=404)
+with urllib.request.urlopen(BASE + "/api/passport/RL10092/qr") as res:
+    png_ok = res.status == 200 and res.read(8) == bytes([137, 80, 78, 71, 13, 10, 26, 10])
+results.append(png_ok)
+print(f"{'PASS' if png_ok else 'FAIL'}  GET   /api/passport/RL10092/qr  -> valid PNG")
+check("buyer track", "GET", "/api/buyer/track/ORD-104", test=lambda d: d["currentStage"] == "Weaving")
+check("buyer track 404", "GET", "/api/buyer/track/ORD999", expect=404)
+check("transaction", "POST", "/api/transactions", 201, {"orderId": "ORD104", "amount": 1000},
+      test=lambda d: d["order"]["paidAmount"] >= 1000)
+check("transaction 422", "POST", "/api/transactions", 422, {"amount": 0})
+
 print(f"\n{sum(results)}/{len(results)} passed")
 sys.exit(0 if all(results) else 1)

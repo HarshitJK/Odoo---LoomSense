@@ -1,253 +1,73 @@
 # LoomSense API
 
-Base URL: `http://localhost:8000` · Interactive docs: `/docs`.
-JSON uses camelCase. IDs have no hyphens (`ORD104`, `RL10092`, `YB82`, `W01`). Money is in INR.
-No response contains MongoDB `_id`. Errors look like `{"detail": "Order NOPE not found"}`:
-404 = id not found, 409 = id already exists, 422 = invalid body, 503 = MongoDB down.
+Base URL `http://localhost:8000` · interactive docs at `/docs` · full example responses in [api-examples.md](api-examples.md).
 
-## Health
-| Method | Path | Purpose |
+**Conventions.** JSON is camelCase. IDs have no hyphens (`ORD104`, `RL10092`, `YB82`, `W01`); lookups of orders and rolls
+also accept `ORD-104` / `ord-104`. Money is INR, percentages have 1 decimal. No response contains `_id`.
+Errors are always `{"detail": "message"}`: 404 not found, 409 already exists / not allowed, 422 invalid body or query
+(`detail` is readable text, `errors` holds the raw list), 403 bad admin key, 503 MongoDB down, 500 unexpected.
+
+## Orders, machines, inventory, workers
+| Method | Path | Notes |
 |---|---|---|
-| GET | `/api/health` | Pings MongoDB |
+| GET | `/api/orders?status=` | List. Each order has `costs`, `profit`, `margin`, `paidAmount` (kept in sync by the server) |
+| GET / PATCH | `/api/orders/{id}` | PATCH any of `status, producedMeters, revenue, machineId, deadline, yarnBatch, yarnConsumedKg, otherCost...` |
+| POST | `/api/orders` | `{buyerName, quantityMeters>0, fabricType, colour, revenue}` → id generated, status `NEW` |
+| GET | `/api/orders/{id}/cost` | Live `costs{rawMaterial,labour,machine,rework,other}`, `totalCost`, `labourHours`, `workerCount` |
+| GET | `/api/orders/{id}/readiness` | Material check + projected margin of an existing order |
+| POST | `/api/orders/readiness-check` | Same for a new order: `{quantityMeters, colour, fabricType, expectedRevenue}` |
+| GET | `/api/machines`, `/api/machines/{id}` | Live machine object (below) |
+| PATCH | `/api/machines/{id}` | `status` (`RUNNING`/`IDLE`/`DOWN`), `currentOrderId`, `productionRate` |
+| POST | `/api/machines/simulate` | `{action: start\|stop\|reset\|failure, machineId?, speed?}` (speed 0–100) |
+| GET / POST | `/api/inventory` | Items carry `lowStock` (under 300 kg). POST needs `batchId` |
+| PATCH | `/api/inventory/{batchId}` | `material, colour, quantityKg, costPerKg, supplier` |
+| GET / POST | `/api/workers` | GET adds `latestAssignment`. POST needs `workerId`, `name` |
+| POST | `/api/attendance` | `{workerId, orderId, machineId, hoursWorked, overtimeHours, date?}`; updates the order's labour cost |
+| GET | `/api/workers/wages/summary?month=2026-10` | Regular wages, overtime pay, total, `labourCostPerOrder[]` |
 
-```json
-{"status": "ok", "database": "connected"}
-```
+Readiness response: `requiredYarnKg, availableKg, shortageKg, status` (`MATERIAL_READY` / `CANNOT_START_FULL_PRODUCTION`),
+`projectedMaterialCost, projectedLabourCost, projectedMachineCost, projectedCost, projectedProfit, projectedMargin, warning`.
 
-## Orders
-| Method | Path | Purpose |
+Machine object (REST and WebSocket): `machineId, name, status, currentOrderId, producedMeters, targetMeters, progress,
+productionRate, efficiency, temperature, costPerHour, costPerMeter, orderMachineCost, estimatedCompletion, runtimeToday`.
+`productionRate` is 0 unless `RUNNING`. A machine that finished its order goes `IDLE` but keeps `currentOrderId`.
+
+## Quality, passport, buyer, payments
+| Method | Path | Notes |
 |---|---|---|
-| GET | `/api/orders?status=WEAVING` | List orders; `status` filter optional |
-| GET | `/api/orders/{order_id}` | One order |
-| POST | `/api/orders` | Create order (id generated, status `NEW`). Required: `buyerName`, `quantityMeters` |
-| PATCH | `/api/orders/{order_id}` | Update only the fields you send |
+| GET | `/api/quality`, `/api/quality/{rollId}` | Internal view incl. `reworkCost` and `impact`; list is newest first |
+| POST | `/api/quality` | `{orderId, machineId, yarnBatch, shift, status, defects[], affectedMeters, reworkStatus}`; `rollId` generated |
+| GET | `/api/passport/{rollId}` | **Public.** `rollId, orderId, buyerName, yarnBatch, machineId, shift, producedAt, qualityStatus, defects, reworkStatus` |
+| GET | `/api/passport/{rollId}/qr` | **Public.** PNG QR pointing to `{PASSPORT_BASE_URL}/passport/{rollId}` |
+| GET | `/api/buyer/track/{orderId}` | **Public, buyer-safe.** `orderId, buyerName, fabricType, colour, quantityMeters, progress, currentStage, stages[], expectedCompletion, qualityStatus, dispatchStatus` |
+| POST | `/api/transactions` | `{orderId, amount, type?: BUYER_PAYMENT, date?}`; a buyer payment raises the order's `paidAmount` |
 
-Order (also the example for GET one / POST / PATCH response):
-```json
-{"orderId": "ORD104", "buyerId": "BUY001", "buyerName": "ABC Garments", "fabricType": "Cotton",
- "colour": "Navy Blue", "quantityMeters": 2000.0, "producedMeters": 1460.0, "status": "WEAVING",
- "orderDate": "2026-10-01", "machineId": "W01", "deadline": "2026-10-15T18:00:00", "revenue": 356000.0, "yarnBatch": "YB82", "yarnConsumedKg": null, "otherCost": 4000.0,
- "costs": {"rawMaterial": 155052.0, "labour": 22995.0, "machine": 7821.43, "rework": 0.0, "other": 4000.0},
- "profit": 166131.57, "margin": 46.7}
-```
-`costs`, `profit` and `margin` are computed by the server (see Costing below) and re-computed whenever an order is created or patched, or when attendance, quality rolls or machine assignments for it change. Optional inputs: `yarnBatch`, `yarnConsumedKg` (default: 0.59 kg per metre produced), `otherCost`.
-
-POST body example: `{"buyerName": "ABC Garments", "fabricType": "Cotton", "colour": "Navy Blue", "quantityMeters": 2000, "revenue": 180000}`
-PATCH body example: `{"status": "QUALITY_CHECK", "producedMeters": 2000}`
-
-## Machines
-
-| Method | Path | Purpose |
-|---|---|---|
-| GET | `/api/machines` | List machines (W01-W06) with live production fields |
-| GET | `/api/machines/{machine_id}` | One machine |
-| PATCH | `/api/machines/{machine_id}` | Update `status`, `currentOrderId`, `productionRate` (returns the machine object) |
-| POST | `/api/machines/simulate` | Demo controls for the machine simulator (see below) |
-
-Machine object (same shape in REST and WebSocket):
-```json
-{"machineId": "W01", "name": "Weaving Machine 01", "status": "RUNNING", "currentOrderId": "ORD104",
- "producedMeters": 1494.7, "targetMeters": 2000.0, "progress": 74.7, "productionRate": 112.0,
- "efficiency": 0.92, "temperature": 55.4, "costPerHour": 600.0, "costPerMeter": 5.36,
- "orderMachineCost": 8007.16, "estimatedCompletion": "2026-10-10T17:05:23", "runtimeToday": 6.65}
-```
-- `status` is `RUNNING`, `IDLE` or `DOWN`. `productionRate` (metres per hour) is 0 unless the machine is `RUNNING`.
-- `progress` is `producedMeters / targetMeters` in %, capped at 100. `costPerMeter` = `costPerHour / rate` (INR).
-- `orderMachineCost` is the machine cost attributed so far to `currentOrderId` (`producedMeters / rate x costPerHour`).
-- `estimatedCompletion` is when the order finishes at the current combined rate of its running machines; `null` if the machine is not running.
-- `runtimeToday` is in hours. A machine that finished its order goes `IDLE` but keeps `currentOrderId` so its cost stays attributed to that order.
-- Two machines (W02, W04) share order ORD108, so their `producedMeters` are shares of the order total.
-
-### Simulator
-
-The simulator is an asyncio task inside the API process. Every 3 seconds each `RUNNING` machine advances by about `productionRate x 3 s / 3600 x 60` metres (2-8 m for the seeded machines; 1 real second counts as 1 factory minute), temperature is jittered between 55 and 70 and efficiency between 0.85 and 0.95. The linked order's `producedMeters` is updated and its machine cost, profit and margin are recomputed. When an order reaches `quantityMeters` it moves to `QUALITY_CHECK`, its machines go `IDLE`, and an `order_completed` event is sent. Set `SIMULATOR_AUTOSTART=false` to start it paused.
-
-`POST /api/machines/simulate`
-
-| Body field | Meaning |
-|---|---|
-| `action` | `start`, `stop`, `reset` or `failure` (required) |
-| `machineId` | Optional. `start`/`stop` without it start/stop the whole simulator; with it, one machine. `failure` without it fails a random running machine |
-| `speed` | Optional speed multiplier, greater than 0 and at most 100 (e.g. `20` to finish orders quickly in a demo) |
-
-- `start` with a `machineId` needs an order assigned (409 otherwise). `reset` restores the seeded machines (or one machine) and the produced metres and status of their orders. `failure` sets the machine to `DOWN`.
-- Errors: 404 unknown machine, 409 not allowed, 422 invalid body.
-
-```json
-{"action": "start", "speed": 20}
-```
-Response:
-```json
-{"running": true, "speed": 20.0, "message": "Simulator started"}
-```
-
-## WebSocket
-
-`WS /ws/machines` (e.g. `ws://localhost:8000/ws/machines`). Server to client only; anything the client sends is ignored.
-
-1. On connect: a `snapshot` message with all machines.
-2. Every 3 seconds while the simulator runs: a `machine_update` message with all machines. When the simulator is stopped, updates stop.
-3. Events when something notable happens: `order_completed`, `machine_failure`, `simulator_started`, `simulator_stopped`.
-4. After `reset`, `failure` or a per-machine `start`/`stop`, an extra `machine_update` is sent immediately.
-
-`snapshot` and `machine_update`:
-```json
-{"type": "machine_update", "timestamp": "2026-10-10T12:41:03",
- "simulator": {"running": true, "speed": 1.0},
- "machines": [{"machineId": "W01", "name": "Weaving Machine 01", "status": "RUNNING", "currentOrderId": "ORD104",
-               "producedMeters": 1494.7, "targetMeters": 2000.0, "progress": 74.7, "productionRate": 112.0,
-               "efficiency": 0.92, "temperature": 55.4, "costPerHour": 600.0, "costPerMeter": 5.36,
-               "orderMachineCost": 8007.16, "estimatedCompletion": "2026-10-10T17:05:23", "runtimeToday": 6.65}]}
-```
-(`machines` has one entry per machine; one is shown.)
-
-`event`:
-```json
-{"type": "event", "event": "order_completed", "machineId": "W01", "orderId": "ORD104",
- "message": "Order ORD104 finished production on W01. Ready for quality check.", "timestamp": "2026-10-10T12:45:12"}
-```
-If MongoDB is down on connect, the first message is `{"type": "error", "message": "MongoDB is not available"}`.
-
-Quick check without a frontend: `python ws_check.py` in `backend/` prints the first five messages.
-
-## Inventory
-| Method | Path | Purpose |
-|---|---|---|
-| GET | `/api/inventory` | List yarn batches with computed `lowStock` (true when `quantityKg` < 300) |
-| POST | `/api/inventory` | Add a batch (`batchId` required, 409 if it exists) |
-| PATCH | `/api/inventory/{batch_id}` | Update `material`, `colour`, `quantityKg`, `costPerKg`, `supplier` |
-
-```json
-{"batchId": "YB82", "material": "Cotton Yarn", "colour": "Navy Blue", "quantityKg": 950.0,
- "costPerKg": 180.0, "supplier": "Supplier A", "receivedDate": "2026-10-01", "lowStock": false}
-```
-
-## Workers and attendance
-| Method | Path | Purpose |
-|---|---|---|
-| GET | `/api/workers` | List workers with their latest assignment (`null` if no attendance yet) |
-| POST | `/api/workers` | Add a worker (`workerId`, `name` required; 409 if it exists) |
-| POST | `/api/attendance` | Log hours for a worker (404 if worker unknown; `date` defaults to today) |
-
-```json
-{"workerId": "EMP021", "name": "Ravi Kumar", "hourlyRate": 90.0, "shift": "B",
- "latestAssignment": {"orderId": "ORD104", "machineId": "W01", "date": "2026-10-10"}}
-```
-Attendance body and response:
-```json
-{"workerId": "EMP021", "orderId": "ORD104", "machineId": "W01", "hoursWorked": 8.0, "overtimeHours": 0, "date": "2026-10-10"}
-```
-
-## Quality
-| Method | Path | Purpose |
-|---|---|---|
-| GET | `/api/quality` | All rolls, newest first |
-| GET | `/api/quality/{roll_id}` | One roll |
-| POST | `/api/quality` | Store a roll (`rollId` generated if omitted; no cost logic yet) |
-
-```json
-{"rollId": "RL10092", "orderId": "ORD104", "machineId": "W01", "yarnBatch": "YB82", "shift": "B",
- "buyerName": "ABC Garments", "status": "PASSED", "defects": [], "reworkCost": 0.0, "date": "2026-10-08"}
-```
-`status` is `PASSED`, `FAILED`, `REWORK` or `PENDING`.
-
-
-## Costing and readiness
-
-Formulas (constants live in `backend/app/config.py`):
-- Labour = sum of hoursWorked x hourlyRate + sum of overtimeHours x hourlyRate x 1.5
-- Machine = sum over machines of (hours the machine ran for the order x costPerHour), where hours = producedMeters / productionRate
-- Raw material = yarn kg x costPerKg of the order's yarn batch (yarn kg = 0.59 x metres produced unless `yarnConsumedKg` is set)
-- Rework = sum of reworkCost of the order's quality rolls
-- True cost = rawMaterial + labour + machine + rework + other; Profit = revenue - cost; Margin % = profit / revenue x 100
-- Target margin 25% (`belowTarget`); leakage benchmark margin 28%
-
-| Method | Path | Purpose |
-|---|---|---|
-| GET | `/api/orders/{order_id}/cost` | Live cost components for one order |
-| GET | `/api/orders/{order_id}/readiness` | Material readiness and projected margin for an existing order |
-| POST | `/api/orders/readiness-check` | Same check for an order that does not exist yet |
-
-`GET /api/orders/ORD104/cost`
-```json
-{"orderId": "ORD104",
- "costs": {"rawMaterial": 155052.0, "labour": 22995.0, "machine": 7821.43, "rework": 0.0, "other": 4000.0},
- "totalCost": 189868.43, "labourHours": 223.0, "workerCount": 3, "overtimeCost": 1035.0,
- "regularLabourCost": 21960.0, "yarnConsumedKg": 861.4, "machineHours": 13.04}
-```
-
-`POST /api/orders/readiness-check` body (all required except `expectedRevenue`, which defaults to 0):
-```json
-{"quantityMeters": 2000, "colour": "Navy Blue", "fabricType": "Cotton", "expectedRevenue": 356000}
-```
-Response (`GET /api/orders/{id}/readiness` is identical, with `orderId` filled in). `status` is `MATERIAL_READY` or `CANNOT_START_FULL_PRODUCTION`; `warning` is `null` when the margin meets the target:
-```json
-{"orderId": null, "requiredYarnKg": 1180.0, "availableKg": 950.0, "shortageKg": 230.0,
- "status": "CANNOT_START_FULL_PRODUCTION",
- "projectedMaterialCost": 212400.0, "projectedLabourCost": 34629.46, "projectedMachineCost": 12759.35,
- "projectedCost": 259788.81, "expectedRevenue": 356000.0, "projectedProfit": 96211.19,
- "projectedMargin": 27.0, "warning": null, "targetMargin": 25.0}
-```
-Available stock = all inventory whose material is `<fabricType> Yarn` and whose colour matches. Projected labour and machine cost use the average cost per metre of finished orders.
+`status` is `PASSED`/`FAILED`/`REWORK`/`PENDING`. For `FAILED`/`REWORK` with `affectedMeters`, the response adds
+`impact{additionalLabour, machineCost, materialLoss, total}`, `marginBefore`, `marginAfter`; the total becomes the roll's
+`reworkCost` and flows into the order cost. `stages[]` is six `{name, state: DONE|IN_PROGRESS|PENDING}` (Weaving also has `progress`).
+`qualityStatus` for buyers is `NOT_STARTED`, `PENDING`, `PASSED` or `IN_REVIEW`.
 
 ## Finance
-
-Per-order figures use the full contract revenue against the cost so far, so an order still in production has `provisional: true` and a flattering margin. Monthly totals count revenue for in-progress orders pro-rata to `progressPercent`. Orders belong to the month of their `orderDate`.
-
-| Method | Path | Purpose |
+| Method | Path | Notes |
 |---|---|---|
-| GET | `/api/finance/dashboard?month=2026-10` | Owner KPIs, cost breakdown, best/worst order, all orders (month defaults to the current month) |
-| GET | `/api/finance/monthly` | Revenue, cost, profit, margin for the last 4 months |
-| GET | `/api/finance/profit-leakage?order_id=ORD091` | Where an order lost profit; without `order_id`, the lowest-margin finished order |
-| GET | `/api/finance/orders/{order_id}` | Revenue, cost lines, profit, margin for one order |
+| GET | `/api/finance/dashboard?month=2026-10` | `kpis`, `costBreakdown`, `mostProfitableOrder`, `leastProfitableOrder`, `orders[]` |
+| GET | `/api/finance/monthly` | Last 4 months: `month, label, revenue, cost, profit, margin` |
+| GET | `/api/finance/orders/{id}` | `revenue, costs, totalCost, profit, margin, belowTarget, paidAmount, pendingAmount, provisional` |
+| GET | `/api/finance/profit-leakage?order_id=` | `expectedMargin, actualMargin, leaks[{label, amount}], recommendation`; default = lowest-margin finished order |
 
-`GET /api/finance/orders/ORD091`
-```json
-{"orderId": "ORD091", "buyerName": "Metro Apparel", "status": "REWORK", "orderDate": "2026-09-15",
- "revenue": 213000.0,
- "costs": {"rawMaterial": 120000.0, "labour": 35080.0, "machine": 9285.71, "rework": 8000.0, "other": 4000.0},
- "totalCost": 176365.71, "profit": 36634.29, "margin": 17.2, "targetMargin": 25.0, "belowTarget": true,
- "progressPercent": 100.0, "provisional": false, "labourHours": 357.0, "workerCount": 2}
-```
+Formulas: true cost = raw material + labour + machine + rework + other; profit = revenue − cost; margin = profit ÷ revenue × 100.
+Labour = hours × rate + overtime × rate × 1.5. Machine = metres ÷ rate × costPerHour. Raw material = 0.59 kg/m × costPerKg.
+Target margin 25%, leakage benchmark 28%. An order still in production has `provisional: true` (full revenue vs partial cost);
+monthly totals count its revenue pro-rata to progress.
 
-`GET /api/finance/profit-leakage` (ORD091)
-```json
-{"orderId": "ORD091", "buyerName": "Metro Apparel", "expectedMargin": 28.0, "actualMargin": 17.2,
- "leaks": [{"label": "Excess yarn consumption", "amount": 13800.0}, {"label": "Overtime", "amount": 10200.0},
-           {"label": "Rework", "amount": 8000.0}, {"label": "Extra labour hours", "amount": 7598.74}],
- "totalLeakage": 39598.74, "machineId": "W03",
- "recommendation": "Review yarn wastage, reduce overtime and inspect Machine W03."}
-```
-
-`GET /api/finance/monthly` (4 entries; two shown)
-```json
-[{"month": "2026-07", "label": "Jul 2026", "revenue": 270000.0, "cost": 183799.46, "profit": 86200.54, "margin": 31.9},
- {"month": "2026-10", "label": "Oct 2026", "revenue": 395255.0, "cost": 281870.15, "profit": 113384.85, "margin": 28.7}]
-```
-
-`GET /api/finance/dashboard` (`orders` is a list of the per-order objects above; `mostProfitableOrder` / `leastProfitableOrder` have the same shape and are chosen among finished orders)
-```json
-{"month": "2026-10", "label": "Oct 2026", "targetMargin": 25.0,
- "kpis": {"revenue": 395255.0, "productionCost": 281870.15, "netProfit": 113384.85, "profitMargin": 28.7,
-          "buyerPayments": 142400.0, "workerWages": 44541.0, "rawMaterialExpense": 229038.0,
-          "machineOperatingCost": 11941.15, "reworkCost": 0.0},
- "costBreakdown": {"rawMaterial": 229038.0, "labour": 33891.0, "machine": 11941.15, "rework": 0.0, "other": 7000.0},
- "mostProfitableOrder": {"orderId": "ORD071", "margin": 31.9},
- "leastProfitableOrder": {"orderId": "ORD091", "margin": 17.2},
- "orders": []}
-```
-(`workerWages` is wages paid for attendance in the month; `costBreakdown` is the cost attributed to that month's orders. The nested orders are abbreviated here.)
-
-## Wages
-
-| Method | Path | Purpose |
+## Demo and system
+| Method | Path | Notes |
 |---|---|---|
-| GET | `/api/workers/wages/summary?month=2026-10` | Regular wages, overtime pay, workforce cost and labour cost per order (month defaults to current) |
+| GET | `/`, `/api/health` | `/api/health` → `{"status":"ok","database":"connected"}` (503 if MongoDB is down) |
+| POST | `/api/demo/reset` | Header `X-Admin-Key: <ADMIN_KEY>`. Re-runs the seed. 403 if the key is wrong or `ADMIN_KEY` is unset |
 
-```json
-{"month": "2026-10", "totalRegularWages": 39480.0, "totalOvertimePay": 5061.0, "totalWorkforceCost": 44541.0,
- "labourCostPerOrder": [{"orderId": "ORD104", "workersInvolved": 3, "labourHours": 223.0, "labourCost": 22995.0}]}
-```
-
-## Not implemented yet
-`GET /api/passport/{roll_id}`, `GET /api/buyer/track/{order_id}` (placeholder only).
+## WebSocket `WS /ws/machines`
+Server → client only, JSON. On connect a `snapshot`, then every 3 s a `machine_update` while the simulator runs (nothing while stopped):
+`{"type": "machine_update", "timestamp": "...", "simulator": {"running": true, "speed": 1.0}, "machines": [<machine object>, ...]}`.
+Events: `{"type": "event", "event": "order_completed" | "machine_failure" | "simulator_started" | "simulator_stopped" | "demo_reset", "machineId", "orderId", "message", "timestamp"}`.
+If MongoDB is down on connect, the first message is `{"type": "error", "message": ...}`.

@@ -4,6 +4,9 @@ Profit = revenue - true order cost.  Margin % = profit / revenue x 100.
 Per-order revenue is the full contract revenue; cost is what has been spent so far, so an
 order still in production (`provisional: true`) shows a flattering margin. Monthly totals
 therefore count revenue for in-progress orders pro-rata to their progress.
+
+Functions that look at many orders take an optional `data` dict (see costing.load_data)
+so one request does not repeat the same database queries for every order.
 """
 from datetime import date
 
@@ -11,7 +14,6 @@ from app import database as dbm
 from app.config import EXPECTED_MARGIN, TARGET_MARGIN, YARN_KG_PER_METRE
 from app.services import costing
 
-NO_ID = {"_id": 0}
 MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
 
@@ -24,12 +26,14 @@ def calculate_margin(revenue: float, profit: float) -> float:
     return round(profit / revenue * 100, 1) if revenue else 0.0
 
 
-def order_profit(order_id: str) -> dict:
-    order = costing.get_order(order_id)
-    cost = costing.calculate_order_cost(order_id)
+def order_profit(order_id: str, data: dict = None) -> dict:
+    data = data or costing.load_data(order_id)
+    order = costing.get_order(order_id, data)
+    cost = costing.calculate_order_cost(order_id, data)
     revenue = order.get("revenue", 0)
     profit = calculate_profit(revenue, cost["totalCost"])
     margin = calculate_margin(revenue, profit)
+    paid = round(sum(t["amount"] for t in data["transactions"] if t.get("orderId") == order_id), 2)
     quantity = order.get("quantityMeters", 0)
     progress = round(order.get("producedMeters", 0) / quantity * 100, 1) if quantity else 0.0
     return {
@@ -42,6 +46,8 @@ def order_profit(order_id: str) -> dict:
         "totalCost": cost["totalCost"],
         "profit": profit,
         "margin": margin,
+        "paidAmount": paid,
+        "pendingAmount": round(max(revenue - paid, 0), 2),
         "targetMargin": TARGET_MARGIN,
         "belowTarget": bool(revenue) and margin < TARGET_MARGIN,
         "progressPercent": progress,
@@ -56,13 +62,15 @@ def refresh_order(order_id: str) -> dict:
     p = order_profit(order_id)
     dbm.orders().update_one(
         {"orderId": order_id},
-        {"$set": {"costs": p["costs"], "profit": p["profit"], "margin": p["margin"]}},
+        {"$set": {"costs": p["costs"], "profit": p["profit"], "margin": p["margin"],
+                  "paidAmount": p["paidAmount"]}},
     )
     return p
 
 
-def all_order_profits() -> list:
-    return [order_profit(o["orderId"]) for o in dbm.orders().find({}, NO_ID).sort("orderId", 1)]
+def all_order_profits(data: dict = None) -> list:
+    data = data or costing.load_data()
+    return [order_profit(o["orderId"], data) for o in data["orders"]]
 
 
 def _earned_revenue(p: dict) -> float:
@@ -89,10 +97,11 @@ def month_label(month: str) -> str:
     return f"{MONTH_NAMES[int(month[5:7]) - 1]} {month[:4]}"
 
 
-def monthly_summary(month: str) -> dict:
+def monthly_summary(month: str, profits: list = None) -> dict:
     """Orders are assigned to the month of their orderDate."""
-    profits = [p for p in all_order_profits() if (p["orderDate"] or "").startswith(month)]
-    return {"month": month, "label": month_label(month), **_summarise(profits)}
+    profits = all_order_profits() if profits is None else profits
+    in_month = [p for p in profits if (p["orderDate"] or "").startswith(month)]
+    return {"month": month, "label": month_label(month), **_summarise(in_month)}
 
 
 def last_months(count: int = 4, today: date = None) -> list:
@@ -107,8 +116,8 @@ def last_months(count: int = 4, today: date = None) -> list:
     return months[::-1]
 
 
-def monthly_trend() -> list:
-    profits = all_order_profits()
+def monthly_trend(profits: list = None) -> list:
+    profits = all_order_profits() if profits is None else profits
     trend = []
     for month in last_months(4):
         part = _summarise([p for p in profits if (p["orderDate"] or "").startswith(month)])
@@ -120,42 +129,47 @@ def monthly_trend() -> list:
     return trend
 
 
-def lowest_margin_order_id():
+def lowest_margin_order_id(profits: list = None):
     """Lowest-margin order that has finished production (in-progress margins are provisional)."""
-    done = [p for p in all_order_profits() if not p["provisional"] and p["revenue"]]
+    profits = all_order_profits() if profits is None else profits
+    done = [p for p in profits if not p["provisional"] and p["revenue"]]
     if not done:
         return None
     return min(done, key=lambda p: p["margin"])["orderId"]
 
 
-def profit_leakage(order_id: str) -> dict:
+def profit_leakage(order_id: str, data: dict = None) -> dict:
     """Compare an order's cost lines with a benchmark and explain where profit leaked.
 
     Benchmarks (per metre produced): yarn = 0.59 kg/m at the batch price; labour = average
     labour hours per metre of the other orders at this order's own average wage; rework = 0.
     """
-    order = costing.get_order(order_id)
-    p = order_profit(order_id)
-    cost = costing.calculate_order_cost(order_id)
+    data = data or costing.load_data()
+    order = costing.get_order(order_id, data)
+    p = order_profit(order_id, data)
+    cost = costing.calculate_order_cost(order_id, data)
     meters = order.get("producedMeters") or order.get("quantityMeters", 0)
 
     leaks = []
 
     # 1. Excess yarn
     expected_kg = YARN_KG_PER_METRE * meters
-    excess_yarn = (cost["yarnConsumedKg"] - expected_kg) * costing.yarn_price(order)
+    excess_yarn = (cost["yarnConsumedKg"] - expected_kg) * costing.yarn_price(order, data)
     if excess_yarn > 0:
         leaks.append({"label": "Excess yarn consumption", "amount": round(excess_yarn, 2)})
 
     # 2. Labour hours / overtime
     others = []
-    for o in dbm.orders().find({"orderId": {"$ne": order_id}, "producedMeters": {"$gt": 0}}, NO_ID):
-        hours = costing.calculate_order_cost(o["orderId"])["labourHours"]
+    for o in data["orders"]:
+        if o["orderId"] == order_id or o.get("producedMeters", 0) <= 0:
+            continue
+        hours = costing.calculate_order_cost(o["orderId"], data)["labourHours"]
         if hours:
             others.append(hours / o["producedMeters"])
     if others and cost["labourHours"]:
         expected_hours = sum(others) / len(others) * meters
-        regular_hours = cost["labourHours"] - _overtime_hours(order_id)
+        overtime_hours = sum(a.get("overtimeHours", 0) for a in data["attendance"] if a.get("orderId") == order_id)
+        regular_hours = cost["labourHours"] - overtime_hours
         avg_rate = cost["regularLabourCost"] / regular_hours if regular_hours else 0
         overrun = cost["costs"]["labour"] - expected_hours * avg_rate
         if overrun > 0:
@@ -170,7 +184,7 @@ def profit_leakage(order_id: str) -> dict:
         leaks.append({"label": "Rework", "amount": cost["costs"]["rework"]})
 
     leaks.sort(key=lambda leak: leak["amount"], reverse=True)
-    machine_id = _worst_machine(order)
+    machine_id = _worst_machine(order, data)
     return {
         "orderId": order_id,
         "buyerName": order.get("buyerName"),
@@ -183,16 +197,11 @@ def profit_leakage(order_id: str) -> dict:
     }
 
 
-def _overtime_hours(order_id: str) -> float:
-    records = dbm.attendance().find({"orderId": order_id}, NO_ID)
-    return sum(r.get("overtimeHours", 0) for r in records)
-
-
-def _worst_machine(order: dict):
+def _worst_machine(order: dict, data: dict):
     """Machine with the most rework cost on this order, else the order's own machine."""
     by_machine = {}
-    for r in dbm.quality_checks().find({"orderId": order["orderId"]}, NO_ID):
-        if r.get("machineId"):
+    for r in data["rolls"]:
+        if r.get("orderId") == order["orderId"] and r.get("machineId"):
             by_machine[r["machineId"]] = by_machine.get(r["machineId"], 0) + r.get("reworkCost", 0)
     if by_machine and max(by_machine.values()) > 0:
         return max(by_machine, key=by_machine.get)

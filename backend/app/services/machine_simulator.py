@@ -10,6 +10,7 @@ so a 112 m/h machine adds about 5.6 m per 3-second tick and the numbers visibly 
 import asyncio
 import logging
 import random
+import threading
 from datetime import datetime, timedelta
 
 from app import database as dbm
@@ -22,6 +23,7 @@ TICK_SECONDS = 3
 TIME_SCALE = 60
 
 state = {"running": SIMULATOR_AUTOSTART, "speed": 1.0}
+sim_lock = threading.Lock()  # held while a tick or a demo reset writes to the database
 listeners = []  # async callables that receive each message (e.g. the WebSocket broadcast)
 
 
@@ -114,6 +116,11 @@ def event_message(event: str, message: str, machine_id=None, order_id=None) -> d
 
 def tick() -> tuple:
     """Advance all RUNNING machines by one step. Returns (events, machine views)."""
+    with sim_lock:
+        return _tick()
+
+
+def _tick() -> tuple:
     events, touched = [], set()
     speed = state["speed"]
     factory_hours = TICK_SECONDS * TIME_SCALE * speed / 3600

@@ -6,7 +6,7 @@ from app import database as dbm
 
 def _next(collection, field: str, prefix: str, start: int, width: int = 0) -> str:
     highest = start - 1
-    for doc in collection.find({field: {"$regex": f"^{prefix}\d+$"}}, {field: 1, "_id": 0}):
+    for doc in collection.find({field: {"$regex": f"^{prefix}[0-9]+$"}}, {field: 1, "_id": 0}):
         highest = max(highest, int(re.sub(r"\D", "", doc[field])))
     return f"{prefix}{highest + 1:0{width}d}"
 
@@ -21,3 +21,8 @@ def next_roll_id() -> str:
 
 def next_transaction_id() -> str:
     return _next(dbm.transactions(), "transactionId", "TXN", 1, width=3)
+
+
+def normalize_id(value: str) -> str:
+    """'ORD-104', 'ord 104' and 'ORD104' all become 'ORD104'."""
+    return value.replace("-", "").replace(" ", "").upper()

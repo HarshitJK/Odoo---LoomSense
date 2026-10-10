@@ -1,0 +1,25 @@
+# Render blueprint: one web service. The machine simulator runs inside it, so keep ONE instance.
+services:
+  - type: web
+    name: loomsense-api
+    runtime: python
+    rootDir: backend
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.3
+      - key: MONGODB_URI        # MongoDB Atlas connection string (set in the Render dashboard)
+        sync: false
+      - key: DB_NAME
+        value: loomsense
+      - key: CORS_ORIGINS       # your deployed frontend URL(s), comma-separated
+        sync: false
+      - key: PASSPORT_BASE_URL  # your deployed frontend URL
+        sync: false
+      - key: ADMIN_KEY
+        generateValue: true
+      - key: SIMULATOR_AUTOSTART
+        value: "true"

@@ -19,9 +19,9 @@ class Machine(BaseModel):
 
 
 class MachineUpdate(BaseModel):
-    status: Optional[str] = None
+    status: Optional[Literal["RUNNING", "IDLE", "DOWN"]] = None
     currentOrderId: Optional[str] = None
-    productionRate: Optional[float] = None
+    productionRate: Optional[float] = Field(default=None, ge=0)
 
 
 class SimulateRequest(BaseModel):

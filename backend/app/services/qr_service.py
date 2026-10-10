@@ -1,13 +1,17 @@
 """QR code generation for the Fabric Digital Passport."""
-import base64
 import io
 
 import qrcode
 
+from app.config import PASSPORT_BASE_URL
 
-def generate_roll_qr(roll_id: str, base_url: str = "http://localhost:5173") -> str:
-    """Return a base64 PNG data URI of a QR pointing to /passport/{roll_id}."""
-    img = qrcode.make(f"{base_url}/passport/{roll_id}")
+
+def passport_url(roll_id: str) -> str:
+    return f"{PASSPORT_BASE_URL}/passport/{roll_id}"
+
+
+def generate_roll_qr(roll_id: str) -> bytes:
+    """PNG image bytes of a QR code that opens the roll's passport page."""
     buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+    qrcode.make(passport_url(roll_id)).save(buf, format="PNG")
+    return buf.getvalue()
