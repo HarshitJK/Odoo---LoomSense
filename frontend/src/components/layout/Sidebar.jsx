@@ -1,40 +1,89 @@
-import { useAuth } from "../../context/AuthContext.jsx";
 import { NavLink } from "react-router-dom";
 import { LayoutDashboard, ClipboardList, Boxes, Factory, Users, ShieldCheck, ScanLine } from "lucide-react";
+import { useAuth } from "../../context/AuthContext.jsx";
+import { roleLabel } from "../../utils/labels.js";
+import Button from "../common/Button.jsx";
 
-const links = [
-  { to: "/", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/orders", label: "Orders", icon: ClipboardList },
-  { to: "/inventory", label: "Inventory", icon: Boxes },
-  { to: "/production", label: "Production", icon: Factory },
-  { to: "/workers", label: "Workers", icon: Users },
-  { to: "/quality", label: "Quality", icon: ShieldCheck },
-  { to: "/scan", label: "Scan QR", icon: ScanLine },
+// Plain names, three short sections. Paths match App.jsx.
+const SECTIONS = [
+  { title: "Overview", items: [{ to: "/", label: "Dashboard", icon: LayoutDashboard }] },
+  {
+    title: "Operations",
+    items: [
+      { to: "/orders", label: "Orders", icon: ClipboardList },
+      { to: "/inventory", label: "Stock", icon: Boxes },
+      { to: "/production", label: "Machines", icon: Factory },
+      { to: "/quality", label: "Quality checks", icon: ShieldCheck },
+      { to: "/scan", label: "Scan QR code", icon: ScanLine },
+    ],
+  },
+  { title: "People", items: [{ to: "/workers", label: "Workers", icon: Users }] },
 ];
 
-export default function Sidebar() {
-  const { user, logout } = useAuth();
-  const allowed = user?.role === "OWNER" ? links : links.filter(l => (user?.role === "PRODUCTION_MANAGER" ? ["/orders", "/inventory", "/production", "/quality", "/scan"] : ["/quality", "/scan"]).includes(l.to));
+const MANAGER_PATHS = ["/orders", "/inventory", "/production", "/quality", "/scan"];
+const QC_PATHS = ["/quality", "/scan"];
+
+/** Sections and links this role can open. */
+function sectionsFor(role) {
+  const allowed = role === "OWNER" ? null : role === "PRODUCTION_MANAGER" ? MANAGER_PATHS : QC_PATHS;
+  return SECTIONS.map((s) => ({ ...s, items: s.items.filter((i) => !allowed || allowed.includes(i.to)) })).filter(
+    (s) => s.items.length
+  );
+}
+
+/** The navigation list, used by the desktop sidebar and the phone menu. `large` makes tap targets bigger. */
+export function NavLinks({ onNavigate, large = false }) {
+  const { user } = useAuth();
   return (
-    <aside className="hidden w-60 shrink-0 bg-slate-900 text-slate-200 md:block">
-      <div className="px-6 py-5 text-xl font-bold tracking-wide text-white">LoomSense</div>
-      <nav className="flex flex-col gap-1 px-3">
-        {allowed.map(({ to, label, icon: Icon }) => (
-          <NavLink
-            key={to}
-            to={to}
-            end={to === "/"}
-            className={({ isActive }) =>
-              `flex items-center gap-3 rounded-md px-3 py-2 text-sm ${
-                isActive ? "bg-slate-700 text-white" : "hover:bg-slate-800"
-              }`
-            }
-          >
-            <Icon size={18} />
-            {label}
-          </NavLink>
-        ))}
-      <p className="px-3 pt-6 text-xs">{user?.email} · {user?.role}</p><button className="p-3 text-left" onClick={logout}>Sign out</button></nav>
+    <nav aria-label="Main" className="space-y-5">
+      {sectionsFor(user?.role).map((section) => (
+        <div key={section.title}>
+          <p className="px-3 pb-1 text-xs font-medium text-gray-500">{section.title}</p>
+          <ul className="space-y-0.5">
+            {section.items.map(({ to, label, icon: Icon }) => (
+              <li key={to}>
+                <NavLink
+                  to={to}
+                  end={to === "/"}
+                  onClick={onNavigate}
+                  className={({ isActive }) =>
+                    `flex items-center gap-3 rounded-md px-3 text-sm ${large ? "min-h-12" : "min-h-9"} ${
+                      isActive ? "bg-blue-50 font-medium text-blue-700" : "text-gray-700 hover:bg-gray-50"
+                    }`
+                  }
+                >
+                  <Icon size={16} aria-hidden="true" />
+                  {label}
+                </NavLink>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </nav>
+  );
+}
+
+/** Signed-in person with a Sign out button. */
+export function AccountBox() {
+  const { user, logout } = useAuth();
+  return (
+    <div className="space-y-2 border-t border-gray-200 p-4 text-sm">
+      <p className="truncate text-gray-900">{user?.email}</p>
+      <p className="text-xs text-gray-500">{roleLabel(user?.role)}</p>
+      <Button onClick={logout} className="w-full">Sign out</Button>
+    </div>
+  );
+}
+
+export default function Sidebar() {
+  return (
+    <aside className="hidden w-60 shrink-0 flex-col border-r border-gray-200 bg-white md:flex">
+      <div className="px-6 py-5 text-lg font-semibold text-gray-900">LoomSense</div>
+      <div className="flex-1 overflow-y-auto px-3 pb-4">
+        <NavLinks />
+      </div>
+      <AccountBox />
     </aside>
   );
 }
