@@ -23,8 +23,8 @@ const REQUIRED_FIELDS = [
   ["material", "Material", "text"],
   ["colour", "Colour", "text"],
   ["quantityKg", "Quantity (kg)", "number"],
-  ["costPerKg", "Cost per kg (rupees)", "number"],
-  ["paidAmount", "Paid now (rupees)", "number"],
+  ["costPerKg", "Cost per kg (₹)", "number"],
+  ["paidAmount", "Paid now (₹)", "number"],
   ["purchaseDate", "Date received", "date"],
 ];
 
@@ -99,7 +99,7 @@ export default function PurchaseRegister({ onReceive }) {
                 <FormField label="Add to an existing batch" hint="Leave blank to create a new batch.">
                   <Input value={form.batchId} onChange={set("batchId")} />
                 </FormField>
-                <FormField label="Other charges (rupees)">
+                <FormField label="Other charges (₹)">
                   <Input type="number" min="0" step="0.01" value={form.otherCharges} onChange={set("otherCharges")} />
                 </FormField>
                 <FormField label="Notes">

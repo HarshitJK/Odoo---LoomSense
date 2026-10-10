@@ -132,3 +132,10 @@ Main question: record this roll's result, then see recent rolls.
 ## Login
 
 Restyled with the shared form components. Content unchanged except "Sign in to factory operations" which stays as the one-line purpose.
+
+## Notes from the implementation
+
+- The readiness answer no longer shows the server's "estimation" caption (`estimationWarning`) or the projected material, labour and machine cost lines. They are still returned by the API.
+- Order and roll numbers (ORD104, RL10092), machine names and yarn batch on the passport are kept because people use them on the floor. Internal record ids, batch ids in tables, supplier names in the stock table and hourly rates are not shown.
+- Month-end report, supplier bills and the readiness details of an order are collapsed or behind a button, but their content stays mounted and keeps loading.
+- The Workers page is only open to the owner (route and API), so the worker-facing parts of its design (hours form first on phones) apply to the owner today.

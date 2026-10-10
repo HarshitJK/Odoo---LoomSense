@@ -1,4 +1,5 @@
 import Card from "../common/Card.jsx";
+import ProgressBar from "../common/ProgressBar.jsx";
 import { formatCurrency } from "../../utils/formatCurrency.js";
 import { formatPercent } from "../../utils/format.js";
 
@@ -23,15 +24,11 @@ export default function CostBreakdown({ breakdown }) {
       <ul className="mt-3 space-y-3">
         {rows.map((r) => (
           <li key={r.label}>
-            <div className="flex items-baseline justify-between gap-3 text-sm">
-              <span className="text-gray-900">{r.label}</span>
-              <span className="tabular-nums text-gray-900">
-                {formatCurrency(r.value)} <span className="text-gray-500">({formatPercent(total ? (r.value / total) * 100 : 0, 0)})</span>
-              </span>
-            </div>
-            <div className="mt-1 h-2 w-full overflow-hidden rounded-sm bg-gray-100">
-              <div className="h-full bg-blue-700" style={{ width: `${(r.value / largest) * 100}%` }} />
-            </div>
+            <ProgressBar
+              value={(r.value / largest) * 100}
+              label={r.label}
+              detail={`${formatCurrency(r.value)} (${formatPercent(total ? (r.value / total) * 100 : 0, 0)})`}
+            />
           </li>
         ))}
       </ul>

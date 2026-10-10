@@ -60,7 +60,7 @@ export default function OrderReadinessChecker() {
           <FormField label="Quantity (metres)" required>
             <Input id="input-metres" required type="number" min="1" value={metres} onChange={clear(setMetres)} />
           </FormField>
-          <FormField label="Expected revenue (rupees)" required>
+          <FormField label="Expected revenue (₹)" required>
             <Input id="input-revenue" required type="number" min="0" value={revenue} onChange={clear(setRevenue)} />
           </FormField>
         </div>

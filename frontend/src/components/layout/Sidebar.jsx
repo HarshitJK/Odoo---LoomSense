@@ -78,7 +78,7 @@ export function AccountBox() {
 
 export default function Sidebar() {
   return (
-    <aside className="hidden w-60 shrink-0 flex-col border-r border-gray-200 bg-white md:flex">
+    <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-gray-200 bg-white md:flex">
       <div className="px-6 py-5 text-lg font-semibold text-gray-900">LoomSense</div>
       <div className="flex-1 overflow-y-auto px-3 pb-4">
         <NavLinks />

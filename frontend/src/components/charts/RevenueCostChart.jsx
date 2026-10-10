@@ -12,7 +12,7 @@ const TEXT = "#4b5563"; // gray-600
  */
 export default function RevenueCostChart({ data }) {
   return (
-    <Card title="Revenue and cost by month (rupees)">
+    <Card title="Revenue and cost by month (₹)">
       <div className="mt-2" role="img" aria-label="Bar chart of revenue and cost for each month">
         <ResponsiveContainer width="100%" height={260}>
           <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>

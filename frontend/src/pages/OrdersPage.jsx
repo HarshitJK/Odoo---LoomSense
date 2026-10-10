@@ -143,7 +143,7 @@ export default function OrdersPage() {
               <FormField label="Fabric" required><Input required {...field("fabricType")} /></FormField>
               <FormField label="Colour" required><Input required {...field("colour")} /></FormField>
               <FormField label="Quantity (metres)" required><Input required type="number" min="1" {...field("quantityMeters")} /></FormField>
-              <FormField label="Expected revenue (rupees)" required><Input required type="number" min="0" {...field("revenue")} /></FormField>
+              <FormField label="Expected revenue (₹)" required><Input required type="number" min="0" {...field("revenue")} /></FormField>
               <FormField label="Deadline" required><Input required type="date" {...field("deadline")} /></FormField>
             </div>
 
@@ -329,7 +329,7 @@ export default function OrdersPage() {
               >
                 <h3 className="text-sm font-semibold text-gray-900">Payment from buyer</h3>
                 <div className="flex flex-wrap items-end gap-3">
-                  <FormField label="Amount received (rupees)" required>
+                  <FormField label="Amount received (₹)" required>
                     <Input required type="number" min="0.01" step="0.01" className="sm:w-48" value={payment} onChange={(e) => setPayment(e.target.value)} />
                   </FormField>
                   <FormField label="Date received" required>
