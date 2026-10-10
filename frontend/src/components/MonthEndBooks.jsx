@@ -1,15 +1,109 @@
 import { useState } from "react";
 import useApi from "../hooks/useApi.js";
 import ApiErrorBanner from "./common/ApiErrorBanner.jsx";
+import Button from "./common/Button.jsx";
+import Disclosure from "./common/Disclosure.jsx";
+import FormField, { Input } from "./common/FormField.jsx";
+import KpiCard from "./common/KpiCard.jsx";
+import LoadingBlock from "./common/LoadingBlock.jsx";
+import Notice from "./common/Notice.jsx";
+import { Table, THead, Th, TBody, Tr, Td } from "./common/Table.jsx";
 import { formatCurrency as money } from "../utils/formatCurrency.js";
+import { marginClass } from "../utils/calculations.js";
+import { formatMonth, formatPercent } from "../utils/format.js";
+
+// Behind a click on the dashboard: money in, costs and order results for one month.
 export default function MonthEndBooks() {
-  const [month,setMonth]=useState(new Date().toLocaleDateString("en-CA").slice(0,7));
-  const {data:r,error,loading,reload}=useApi(`/api/finance/month-end?month=${month}`);
-  return <section className="bg-white rounded-xl shadow-sm p-6 space-y-5"><div className="flex flex-wrap gap-4 justify-between items-center"><h2 className="font-bold text-xl">MONTH-END / CLOSE BOOKS</h2><label>Reporting month <input aria-label="Reporting month" type="month" required value={month} onChange={e=>{if(e.target.value)setMonth(e.target.value);}} className="border rounded-lg p-2"/></label><button onClick={reload} className="text-blue-700">Refresh books</button></div><ApiErrorBanner error={error} onRetry={reload}/>{loading?<p>Loading dated activity…</p>:r&&<>
-    <div className="grid sm:grid-cols-3 gap-4">{[["Total Cash In",r.totalCashIn],["Total Expenses Incurred",r.totalExpenses],["Net Result",r.netCashResult]].map(([k,v])=><div key={k} className={`rounded-lg p-5 ${k==="Net Result"?(v>=0?"bg-green-50 text-green-800":"bg-red-50 text-red-800"):"bg-slate-50"}`}><p>{k}</p><p className="text-2xl font-bold">{money(v)}</p></div>)}</div>
-    <p className={`font-bold ${r.netCashResult>=0?"text-green-700":"text-red-700"}`}>{r.netCashResult>=0?"Buyer receipts covered this month's incurred costs.":"This month's incurred costs exceeded buyer receipts."}</p><p className="text-sm text-slate-500">{r.accountingBasis}</p>
-    <div className="grid md:grid-cols-2 gap-6"><div><h3 className="font-bold mb-2">Money In / Costs Incurred</h3>{[["Buyer Payments Received",r.buyerPaymentsReceived],["Raw Material Bills",r.rawMaterialBills],["Worker Wages",r.workerWages],["Machine Operating Cost",r.machineOperatingCost],["Rework / Quality Loss",r.reworkCost],["Other Expenses",r.otherExpenses],["Supplier payments made (separate cash figure)",r.supplierPaymentsMade]].map(([k,v])=><p key={k} className="flex justify-between py-2 border-b border-slate-100">{k}<b>{money(v)}</b></p>)}</div><div><h3 className="font-bold mb-2">Production Overview</h3><p>{r.productionOverview.producedMeters} metres produced · {r.productionOverview.totalOrders} active orders · {r.productionOverview.completedOrders} production completions</p><p>Production value estimate: {money(r.productionValue)}</p><h3 className="font-bold mt-5">Worker Wage Summary</h3><p>Regular wages: {money(r.wageSummary.regularWages)}</p><p>Overtime: {money(r.wageSummary.overtime)}</p><p>Total workforce cost: {money(r.wageSummary.totalWorkforceCost)}</p></div></div>
-    <h3 className="font-bold">Machine Output</h3><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr>{["Machine","Metres","Runtime (h)","Efficiency","Cost"].map(k=><th className="text-left p-2" key={k}>{k}</th>)}</tr></thead><tbody>{r.machineProduction.map(m=><tr className="border-t border-slate-100" key={m.machineId}><td className="p-2">{m.machineName}</td><td>{m.producedMeters}</td><td>{m.runtimeHours}</td><td>{(m.averageEfficiency*100).toFixed(1)}%</td><td>{money(m.machineCost)}</td></tr>)}</tbody></table></div>
-    <h3 className="font-bold">Order Profitability · Lifetime totals for orders active this month</h3><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr>{["Order","Revenue","True cost","Profit","Margin","Basis"].map(k=><th className="text-left p-2" key={k}>{k}</th>)}</tr></thead><tbody>{[...r.orderProfitability].sort((a,b)=>b.margin-a.margin).map(o=><tr className="border-t border-slate-100" key={o.orderId}><td className="p-2">{o.orderId}</td><td>{money(o.revenue)}</td><td>{money(o.totalCost)}</td><td className={o.profit<0?"text-red-700":"text-green-700"}>{money(o.profit)}</td><td className={o.belowTarget?"text-amber-700":"text-green-700"}>{o.margin}%</td><td>{o.provisional?"In progress / provisional":"Production complete"}</td></tr>)}</tbody></table>{r.orderProfitability.length===0&&<p>No dated order activity in this month.</p>}</div>
-  </>}</section>;
+  const [month, setMonth] = useState(new Date().toLocaleDateString("en-CA").slice(0, 7));
+  const { data: r, error, loading, reload } = useApi(`/api/finance/month-end?month=${month}`);
+
+  const lines = r && [
+    ["Payments received from buyers", r.buyerPaymentsReceived],
+    ["Raw material bills", r.rawMaterialBills],
+    ["Worker wages", r.workerWages],
+    ["Machine running cost", r.machineOperatingCost],
+    ["Rework", r.reworkCost],
+    ["Other expenses", r.otherExpenses],
+  ];
+
+  return (
+    <Disclosure title="Month-end report">
+      <div className="space-y-5">
+        <div className="flex flex-wrap items-end gap-3">
+          <FormField label="Month">
+            <Input
+              type="month"
+              required
+              value={month}
+              onChange={(e) => e.target.value && setMonth(e.target.value)}
+              className="sm:w-48"
+            />
+          </FormField>
+          <Button onClick={reload}>Refresh</Button>
+        </div>
+
+        <ApiErrorBanner error={error} onRetry={reload} />
+        {loading && <LoadingBlock label="Loading the month-end report" />}
+
+        {r && !loading && (
+          <>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <KpiCard title="Money received" value={money(r.totalCashIn)} subtitle={formatMonth(month)} />
+              <KpiCard title="Costs" value={money(r.totalExpenses)} />
+              <KpiCard
+                title="Result"
+                value={money(r.netCashResult)}
+                valueClassName={r.netCashResult >= 0 ? "text-green-700" : "text-red-700"}
+              />
+            </div>
+
+            <Notice tone={r.netCashResult >= 0 ? "success" : "warning"}>
+              {r.netCashResult >= 0
+                ? "Payments from buyers covered this month's costs."
+                : "This month's costs were higher than payments from buyers."}
+            </Notice>
+
+            <ul className="divide-y divide-gray-200 border-y border-gray-200">
+              {lines.map(([label, value]) => (
+                <li key={label} className="flex items-baseline justify-between gap-3 py-2.5 text-sm">
+                  <span className="text-gray-900">{label}</span>
+                  <span className="tabular-nums text-gray-900">{money(value)}</span>
+                </li>
+              ))}
+            </ul>
+
+            <div className="rounded-md border border-gray-200">
+              <Table caption="Orders active this month">
+                <THead>
+                  <Th>Order</Th>
+                  <Th align="right">Revenue</Th>
+                  <Th align="right">Cost</Th>
+                  <Th align="right">Profit</Th>
+                  <Th align="right">Margin</Th>
+                </THead>
+                <TBody>
+                  {[...r.orderProfitability]
+                    .sort((a, b) => a.margin - b.margin)
+                    .map((o) => (
+                      <Tr key={o.orderId}>
+                        <Td header>{o.orderId}</Td>
+                        <Td align="right">{money(o.revenue)}</Td>
+                        <Td align="right">{money(o.totalCost)}</Td>
+                        <Td align="right">{money(o.profit)}</Td>
+                        <Td align="right" className={`font-medium ${marginClass(o.margin)}`}>
+                          {formatPercent(o.margin)}
+                        </Td>
+                      </Tr>
+                    ))}
+                </TBody>
+              </Table>
+              {r.orderProfitability.length === 0 && (
+                <p className="px-4 py-4 text-sm text-gray-600">No order activity in this month.</p>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </Disclosure>
+  );
 }

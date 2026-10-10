@@ -1,38 +1,350 @@
 import { useState } from "react";
 import PageHeader from "../components/common/PageHeader.jsx";
 import ApiErrorBanner from "../components/common/ApiErrorBanner.jsx";
+import Button from "../components/common/Button.jsx";
+import Card from "../components/common/Card.jsx";
+import EmptyState from "../components/common/EmptyState.jsx";
+import FormField, { Input, Select } from "../components/common/FormField.jsx";
+import LoadingBlock from "../components/common/LoadingBlock.jsx";
+import Notice from "../components/common/Notice.jsx";
+import StatusBadge from "../components/common/StatusBadge.jsx";
+import { Table, THead, Th, TBody, Tr, Td, useRowLimit, ShowAll } from "../components/common/Table.jsx";
 import ReadinessResult from "../components/orders/ReadinessResult.jsx";
 import BuyerLink from "../components/orders/BuyerLink.jsx";
 import useApi from "../hooks/useApi.js";
 import client from "../api/client.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { formatCurrency as money } from "../utils/formatCurrency.js";
-const blank = { buyerName:"", fabricType:"Cotton", colour:"Navy Blue", quantityMeters:2000, revenue:356000, deadline:"" };
-const input="border border-slate-300 rounded-lg p-2 w-full", button="bg-blue-600 text-white rounded-lg px-4 py-2 disabled:opacity-50";
+import { formatDate, formatMetres, formatPercent } from "../utils/format.js";
+import { ORDER_STAGE_CODES, statusLabel } from "../utils/labels.js";
+
+const blank = { buyerName: "", fabricType: "Cotton", colour: "Navy Blue", quantityMeters: 2000, revenue: 356000, deadline: "" };
+const COST_LINES = [["rawMaterial", "Raw material"], ["labour", "Labour"], ["machine", "Machines"], ["rework", "Rework"], ["other", "Other"]];
+
+// Newest order first: ORD109 before ORD99
+const orderNumber = (o) => Number(String(o.orderId).replace(/\D/g, "")) || 0;
+const newestFirst = (a, b) => orderNumber(b) - orderNumber(a);
+
 export default function OrdersPage() {
-  const {user}=useAuth(), orders=useApi("/api/orders");
-  const [form,setForm]=useState(null), [readiness,setReadiness]=useState(null), [selected,setSelected]=useState(null), [checks,setChecks]=useState({}), [cost,setCost]=useState(null), [error,setError]=useState(""), [busy,setBusy]=useState(false);
-  const machines=useApi("/api/machines"), batches=useApi("/api/inventory");
-  const [batch,setBatch]=useState(""), [reserveKg,setReserveKg]=useState(""), [machine,setMachine]=useState("");
-  const [payment,setPayment]=useState(""), [paymentDate,setPaymentDate]=useState(new Date().toLocaleDateString("en-CA"));
-  async function run(action){setBusy(true);setError("");try{await action();}catch(e){setError(e.response?.data?.detail||e.message);}finally{setBusy(false);}}
-  const check=()=>run(async()=>{const r=await client.post("/api/orders/readiness-check",{...form,expectedRevenue:Number(form.revenue),quantityMeters:Number(form.quantityMeters)});setReadiness(r.data);});
-  const view=o=>run(async()=>{setSelected(o);setCost(null);setReadiness(null);setForm(null);const r=await client.get(`/api/orders/${o.orderId}/readiness`);setReadiness(r.data);setChecks(c=>({...c,[o.orderId]:r.data}));if(user.role==="OWNER")setCost((await client.get(`/api/orders/${o.orderId}/cost`)).data);});
-  return <div className="space-y-6"><PageHeader title="Orders & Readiness" subtitle="Plan material, review expected profit, and manage production orders"/>
-    <button className={button} onClick={()=>{setForm({...blank});setSelected(null);setReadiness(null);setError("");}}>Create Order</button>
-    <ApiErrorBanner error={orders.error} onRetry={orders.reload}/>{error&&<p role="alert" className="text-red-700 bg-red-50 p-3">{error}</p>}{orders.loading&&<p>Loading orders…</p>}
-    <div className="overflow-x-auto rounded-xl bg-white shadow-sm"><table className="w-full text-sm"><thead className="bg-slate-50"><tr>{["Order / Buyer","Fabric / Colour","Produced / Required","Status / Deadline","Expected revenue","Progress","Readiness / Expected margin","Action"].map(k=><th key={k} className="text-left p-3">{k}</th>)}</tr></thead><tbody>{orders.data?.map(o=><tr key={o.orderId} className="border-t border-slate-100"><td className="p-3"><b>{o.orderId}</b><p>{o.buyerName}</p></td><td className="p-3">{o.fabricType}<p>{o.colour}</p></td><td className="p-3">{o.producedMeters} / {o.quantityMeters} m</td><td className="p-3">{o.status}<p>{o.deadline?.slice(0,10)||"No deadline"}</p></td><td className="p-3">{money(o.revenue)}</td><td className="p-3"><progress className="w-24" max={o.quantityMeters} value={o.producedMeters}/><p>{Math.min(100,Math.round(o.producedMeters/o.quantityMeters*100))}%</p></td><td className="p-3">{checks[o.orderId]?<><span className={checks[o.orderId].shortageKg?"text-red-700":"text-green-700"}>{checks[o.orderId].status.replaceAll("_"," ")}</span><p>{checks[o.orderId].projectedMargin}%</p></>:"Check readiness"}</td><td className="p-3"><button disabled={busy} className="text-blue-700" onClick={()=>view(o)}>View details / Check</button></td></tr>)}</tbody></table>{orders.data?.length===0&&<p className="p-6">No orders yet. Create your first order.</p>}</div>
-    {(form||selected)&&<section className="bg-white rounded-xl shadow-sm p-6 space-y-5"><div className="flex justify-between"><h2 className="font-bold text-lg">{form?"Create Order":`${selected.orderId} · Order Details`}</h2><button onClick={()=>{setForm(null);setSelected(null);setReadiness(null);}}>Close</button></div>
-      {form&&<form onSubmit={e=>{e.preventDefault();check();}} className="space-y-4"><div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">{[["buyerName","Buyer","text"],["fabricType","Fabric type","text"],["colour","Colour","text"],["quantityMeters","Required metres","number"],["revenue","Expected revenue ₹","number"],["deadline","Deadline","date"]].map(([k,label,type])=><label key={k} className="text-sm">{label}<input required className={input} type={type} min={k==="quantityMeters"?1:0} value={form[k]} onChange={e=>{setForm({...form,[k]:e.target.value});setReadiness(null);}}/></label>)}</div><button disabled={busy} className={button}>Check readiness before acceptance</button></form>}
-      <ReadinessResult result={readiness}/>
-      {form&&readiness&&<button disabled={busy} className={button} onClick={()=>run(async()=>{await client.post("/api/orders",{...form,quantityMeters:Number(form.quantityMeters),revenue:Number(form.revenue)});setForm(null);setReadiness(null);orders.reload();})}>Accept & Create Order</button>}
-      {selected&&<><BuyerLink order={selected} onChange={o=>{setSelected(o);orders.reload();}}/>
-        <form className="flex flex-wrap gap-3" onSubmit={e=>{e.preventDefault();run(async()=>{await client.post(`/api/orders/${selected.orderId}/reserve`,{batchId:batch,quantityKg:Number(reserveKg)});batches.reload();setReserveKg("");setReadiness((await client.get(`/api/orders/${selected.orderId}/readiness`)).data);});}}><label>Yarn batch<select required className={input} value={batch} onChange={e=>setBatch(e.target.value)}><option value="">Choose matching yarn</option>{batches.data?.map(b=><option key={b.batchId} value={b.batchId}>{b.batchId} · {b.material} · {b.colour}</option>)}</select></label><label>Reserve kg<input required type="number" min="0.01" step="0.01" className={input} value={reserveKg} onChange={e=>setReserveKg(e.target.value)}/></label><button disabled={busy} className={button}>Reserve material</button></form>
-        <form className="flex gap-3" onSubmit={e=>{e.preventDefault();run(async()=>{await client.patch(`/api/machines/${machine}`,{currentOrderId:selected.orderId,status:"RUNNING",productionRate:100});machines.reload();orders.reload();});}}><label>Assign production machine<select required className={input} value={machine} onChange={e=>setMachine(e.target.value)}><option value="">Choose idle machine</option>{machines.data?.filter(m=>m.status==="IDLE").map(m=><option key={m.machineId} value={m.machineId}>{m.name}</option>)}</select></label><button disabled={busy} className={button}>Assign & Start</button></form>
-        <label className="block text-sm">Order stage<select className={input} value={selected.status} disabled={busy} onChange={e=>run(async()=>{const r=await client.patch(`/api/orders/${selected.orderId}`,{status:e.target.value});setSelected(r.data);orders.reload();})}>{[...new Set([selected.status,"NEW","SPINNING","WEAVING","DYEING","QUALITY_CHECK","REWORK","READY_FOR_DISPATCH","DISPATCHED"])].map(s=><option key={s}>{s}</option>)}</select></label>
-        {cost&&<div><h3 className="font-bold">True order cost · Lifetime to date</h3>{Object.entries(cost.costs).map(([k,v])=><p key={k} className="flex justify-between">{k}<b>{money(v)}</b></p>)}<p className="font-bold">Total {money(cost.totalCost)} · Profit {money(selected.revenue-cost.totalCost)} · Margin {selected.revenue?((selected.revenue-cost.totalCost)/selected.revenue*100).toFixed(1):0}%</p></div>}
-        {user.role==="OWNER"&&<form className="flex flex-wrap gap-3" onSubmit={e=>{e.preventDefault();run(async()=>{await client.post("/api/transactions",{orderId:selected.orderId,amount:Number(payment),date:paymentDate});setPayment("");orders.reload();setSelected((await client.get(`/api/orders/${selected.orderId}`)).data);});}}><label>Buyer payment ₹<input required type="number" min="0.01" step="0.01" className={input} value={payment} onChange={e=>setPayment(e.target.value)}/></label><label>Received on<input required type="date" className={input} value={paymentDate} onChange={e=>setPaymentDate(e.target.value)}/></label><button disabled={busy} className={button}>Record payment</button><p className="w-full">Received: {money(selected.paidAmount||0)} · Pending: {money(Math.max(0,selected.revenue-(selected.paidAmount||0)))}</p></form>}
-      </>}
-    </section>}
-  </div>;
+  const { user } = useAuth();
+  const orders = useApi("/api/orders");
+  const machines = useApi("/api/machines");
+  const batches = useApi("/api/inventory");
+
+  const [form, setForm] = useState(null); // the "New order" form
+  const [readiness, setReadiness] = useState(null);
+  const [panel, setPanel] = useState(null); // { order, mode: "link" | "details" }
+  const [cost, setCost] = useState(null);
+  const [error, setError] = useState("");
+  const [saved, setSaved] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [batch, setBatch] = useState("");
+  const [reserveKg, setReserveKg] = useState("");
+  const [machine, setMachine] = useState("");
+  const [payment, setPayment] = useState("");
+  const [paymentDate, setPaymentDate] = useState(new Date().toLocaleDateString("en-CA"));
+
+  const rows = [...(orders.data ?? [])].sort(newestFirst);
+  const limiter = useRowLimit(rows, 5);
+  const selected = panel?.order;
+
+  async function run(action) {
+    setBusy(true);
+    setError("");
+    try {
+      await action();
+    } catch (e) {
+      setError(e.response?.data?.detail || "That did not work. Check the details and try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const openForm = () => {
+    setForm({ ...blank });
+    setPanel(null);
+    setReadiness(null);
+    setError("");
+    setSaved(false);
+  };
+
+  const check = () =>
+    run(async () => {
+      const r = await client.post("/api/orders/readiness-check", {
+        ...form,
+        expectedRevenue: Number(form.revenue),
+        quantityMeters: Number(form.quantityMeters),
+      });
+      setReadiness(r.data);
+    });
+
+  const create = () =>
+    run(async () => {
+      await client.post("/api/orders", { ...form, quantityMeters: Number(form.quantityMeters), revenue: Number(form.revenue) });
+      setForm(null);
+      setReadiness(null);
+      setSaved(true);
+      orders.reload();
+    });
+
+  const openLink = (order) => {
+    setPanel({ order, mode: "link" });
+    setForm(null);
+    setError("");
+  };
+
+  const openDetails = (order) =>
+    run(async () => {
+      setPanel({ order, mode: "details" });
+      setCost(null);
+      setReadiness(null);
+      setForm(null);
+      const r = await client.get(`/api/orders/${order.orderId}/readiness`);
+      setReadiness(r.data);
+      if (user.role === "OWNER") setCost((await client.get(`/api/orders/${order.orderId}/cost`)).data);
+    });
+
+  const updateSelected = (order) => {
+    setPanel((p) => ({ ...p, order }));
+    orders.reload();
+  };
+
+  const field = (key) => ({
+    value: form[key],
+    onChange: (e) => {
+      setForm({ ...form, [key]: e.target.value });
+      setReadiness(null);
+    },
+  });
+
+  return (
+    <>
+      <PageHeader
+        title="Orders"
+        subtitle="Your orders, and a private link for each buyer."
+        action={!form && <Button variant="primary" onClick={openForm}>New order</Button>}
+      />
+
+      <ApiErrorBanner error={orders.error} onRetry={orders.reload} />
+      {error && <Notice tone="error">{error}</Notice>}
+      {saved && <Notice tone="success">Saved. The new order is at the top of the list.</Notice>}
+
+      {form && (
+        <Card title="New order">
+          <form
+            className="mt-3 space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              check();
+            }}
+          >
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <FormField label="Buyer" required><Input required {...field("buyerName")} /></FormField>
+              <FormField label="Fabric" required><Input required {...field("fabricType")} /></FormField>
+              <FormField label="Colour" required><Input required {...field("colour")} /></FormField>
+              <FormField label="Quantity (metres)" required><Input required type="number" min="1" {...field("quantityMeters")} /></FormField>
+              <FormField label="Expected revenue (rupees)" required><Input required type="number" min="0" {...field("revenue")} /></FormField>
+              <FormField label="Deadline" required><Input required type="date" {...field("deadline")} /></FormField>
+            </div>
+
+            {readiness && <ReadinessResult result={readiness} />}
+
+            <div className="flex flex-wrap gap-3">
+              {readiness ? (
+                <Button variant="primary" disabled={busy} onClick={create}>Create order</Button>
+              ) : (
+                <Button type="submit" variant="primary" disabled={busy}>{busy ? "Checking" : "Check stock and profit"}</Button>
+              )}
+              <Button onClick={() => { setForm(null); setReadiness(null); }}>Cancel</Button>
+            </div>
+          </form>
+        </Card>
+      )}
+
+      {orders.loading && !orders.data && <LoadingBlock label="Loading orders" height="h-40" />}
+      {orders.data?.length === 0 && <EmptyState>No orders yet. Use New order to add the first one.</EmptyState>}
+
+      {orders.data?.length > 0 && (
+        <Card title="All orders" padded={false}>
+          <Table caption="Orders">
+            <THead>
+              <Th>Order</Th>
+              <Th>Buyer</Th>
+              <Th>Fabric and colour</Th>
+              <Th align="right">Quantity</Th>
+              <Th>Status</Th>
+              <Th>Deadline</Th>
+              <Th hidden>Actions</Th>
+            </THead>
+            <TBody>
+              {limiter.visible.map((o) => (
+                <Tr key={o.orderId}>
+                  <Td header>{o.orderId}</Td>
+                  <Td>{o.buyerName}</Td>
+                  <Td>{[o.fabricType, o.colour].filter(Boolean).join(", ")}</Td>
+                  <Td align="right">{formatMetres(o.quantityMeters)}</Td>
+                  <Td><StatusBadge status={o.status} /></Td>
+                  <Td>{formatDate(o.deadline, "No deadline")}</Td>
+                  <Td>
+                    <div className="flex gap-2">
+                      <Button onClick={() => openLink(o)}>Buyer link</Button>
+                      <Button disabled={busy} onClick={() => openDetails(o)}>Details</Button>
+                    </div>
+                  </Td>
+                </Tr>
+              ))}
+            </TBody>
+          </Table>
+          <ShowAll limiter={limiter} noun="orders" />
+        </Card>
+      )}
+
+      {selected && panel.mode === "link" && (
+        <Card
+          title={`Buyer link for ${selected.orderId}`}
+          action={<Button onClick={() => setPanel(null)}>Close</Button>}
+        >
+          <div className="mt-3">
+            <BuyerLink order={selected} onChange={updateSelected} />
+          </div>
+        </Card>
+      )}
+
+      {selected && panel.mode === "details" && (
+        <Card
+          title={`${selected.orderId} details`}
+          action={<Button onClick={() => { setPanel(null); setReadiness(null); }}>Close</Button>}
+        >
+          <div className="mt-4 space-y-6">
+            <section className="space-y-2">
+              <h3 className="text-sm font-semibold text-gray-900">Can we start this order?</h3>
+              <ReadinessResult result={readiness} />
+            </section>
+
+            <section className="space-y-3">
+              <h3 className="text-sm font-semibold text-gray-900">Order stage</h3>
+              <FormField label="Stage">
+                <Select
+                  className="sm:w-64"
+                  value={selected.status}
+                  disabled={busy}
+                  onChange={(e) =>
+                    run(async () => {
+                      const r = await client.patch(`/api/orders/${selected.orderId}`, { status: e.target.value });
+                      updateSelected(r.data);
+                    })
+                  }
+                >
+                  {[...new Set([selected.status, ...ORDER_STAGE_CODES])].map((s) => (
+                    <option key={s} value={s}>{statusLabel(s)}</option>
+                  ))}
+                </Select>
+              </FormField>
+            </section>
+
+            <form
+              className="space-y-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                run(async () => {
+                  await client.post(`/api/orders/${selected.orderId}/reserve`, { batchId: batch, quantityKg: Number(reserveKg) });
+                  batches.reload();
+                  setReserveKg("");
+                  setReadiness((await client.get(`/api/orders/${selected.orderId}/readiness`)).data);
+                });
+              }}
+            >
+              <h3 className="text-sm font-semibold text-gray-900">Set aside yarn</h3>
+              <div className="flex flex-wrap items-end gap-3">
+                <FormField label="Yarn" required>
+                  <Select required className="sm:w-72" value={batch} onChange={(e) => setBatch(e.target.value)}>
+                    <option value="">Choose yarn</option>
+                    {batches.data?.map((b) => (
+                      <option key={b.batchId} value={b.batchId}>{b.material}, {b.colour} ({b.quantityKg} kg)</option>
+                    ))}
+                  </Select>
+                </FormField>
+                <FormField label="Quantity (kg)" required>
+                  <Input required type="number" min="0.01" step="0.01" className="sm:w-32" value={reserveKg} onChange={(e) => setReserveKg(e.target.value)} />
+                </FormField>
+                <Button type="submit" disabled={busy}>Set aside</Button>
+              </div>
+            </form>
+
+            <form
+              className="space-y-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                run(async () => {
+                  await client.patch(`/api/machines/${machine}`, { currentOrderId: selected.orderId, status: "RUNNING", productionRate: 100 });
+                  machines.reload();
+                  orders.reload();
+                });
+              }}
+            >
+              <h3 className="text-sm font-semibold text-gray-900">Start on a machine</h3>
+              <div className="flex flex-wrap items-end gap-3">
+                <FormField label="Idle machine" required>
+                  <Select required className="sm:w-72" value={machine} onChange={(e) => setMachine(e.target.value)}>
+                    <option value="">Choose a machine</option>
+                    {machines.data?.filter((m) => m.status === "IDLE").map((m) => (
+                      <option key={m.machineId} value={m.machineId}>{m.name}</option>
+                    ))}
+                  </Select>
+                </FormField>
+                <Button type="submit" disabled={busy}>Assign and start</Button>
+              </div>
+            </form>
+
+            {cost && (
+              <section className="space-y-2">
+                <h3 className="text-sm font-semibold text-gray-900">Cost so far</h3>
+                <ul className="divide-y divide-gray-200 border-y border-gray-200">
+                  {COST_LINES.map(([key, label]) => (
+                    <li key={key} className="flex justify-between gap-3 py-2 text-sm">
+                      <span>{label}</span>
+                      <span className="tabular-nums">{money(cost.costs[key])}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-sm text-gray-900">
+                  Total cost {money(cost.totalCost)}. Profit {money(selected.revenue - cost.totalCost)}, margin{" "}
+                  {selected.revenue ? formatPercent(((selected.revenue - cost.totalCost) / selected.revenue) * 100) : formatPercent(0)}.
+                </p>
+              </section>
+            )}
+
+            {user.role === "OWNER" && (
+              <form
+                className="space-y-3"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  run(async () => {
+                    await client.post("/api/transactions", { orderId: selected.orderId, amount: Number(payment), date: paymentDate });
+                    setPayment("");
+                    orders.reload();
+                    updateSelected((await client.get(`/api/orders/${selected.orderId}`)).data);
+                  });
+                }}
+              >
+                <h3 className="text-sm font-semibold text-gray-900">Payment from buyer</h3>
+                <div className="flex flex-wrap items-end gap-3">
+                  <FormField label="Amount received (rupees)" required>
+                    <Input required type="number" min="0.01" step="0.01" className="sm:w-48" value={payment} onChange={(e) => setPayment(e.target.value)} />
+                  </FormField>
+                  <FormField label="Date received" required>
+                    <Input required type="date" className="sm:w-44" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} />
+                  </FormField>
+                  <Button type="submit" disabled={busy}>Record payment</Button>
+                </div>
+                <p className="text-sm text-gray-600">
+                  Received {money(selected.paidAmount || 0)}. Still to receive {money(Math.max(0, selected.revenue - (selected.paidAmount || 0)))}.
+                </p>
+              </form>
+            )}
+          </div>
+        </Card>
+      )}
+    </>
+  );
 }

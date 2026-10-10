@@ -1,127 +1,28 @@
 import { useState } from "react";
-import { CheckCircle, XCircle, AlertTriangle, ChevronRight } from "lucide-react";
 import client from "../../api/client.js";
-import { formatCurrency } from "../../utils/formatCurrency.js";
-
-// ─── Sub-components ───────────────────────────────────────────────────────────
-
-/** Green or red banner shown after checking (status is MATERIAL_READY or CANNOT_START_FULL_PRODUCTION) */
-function ReadinessBanner({ result }) {
-  if (result.status === "MATERIAL_READY") {
-    return (
-      <div className="flex items-center gap-3 rounded-xl bg-green-50 border border-green-300 px-5 py-4">
-        <CheckCircle className="text-green-600 shrink-0" size={28} />
-        <div>
-          <p className="text-lg font-bold text-green-700">MATERIAL READY</p>
-          <p className="text-sm text-green-600">
-            Sufficient stock available — production can begin immediately.
-          </p>
-        </div>
-      </div>
-    );
-  }
-  return (
-    <div className="flex items-center gap-3 rounded-xl bg-red-50 border border-red-300 px-5 py-4">
-      <XCircle className="text-red-600 shrink-0" size={28} />
-      <div>
-        <p className="text-lg font-bold text-red-700">CANNOT START FULL PRODUCTION</p>
-        <p className="text-sm text-red-600">
-          Shortage of <strong>{result.shortageKg.toFixed(0)} kg</strong>. Available:{" "}
-          {result.availableKg.toFixed(0)} kg / Required: {result.requiredYarnKg.toFixed(0)} kg.
-        </p>
-      </div>
-    </div>
-  );
-}
-
-/** Quantity row used inside the numbers grid */
-function StatRow({ label, value }) {
-  return (
-    <div className="flex justify-between items-center py-2 border-b border-slate-100 last:border-0">
-      <span className="text-sm text-slate-500">{label}</span>
-      <span className="text-sm font-semibold text-slate-800">{value}</span>
-    </div>
-  );
-}
-
-/** Profit-Aware Acceptance panel: every number is calculated by the server */
-function ProfitPanel({ result }) {
-  const meetsTarget = !result.warning;
-
-  return (
-    <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-5 space-y-4">
-      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-        Profit-Aware Acceptance
-      </p>
-
-      {/* Cost breakdown */}
-      <div>
-        <StatRow label="Projected Material Cost" value={formatCurrency(Math.round(result.projectedMaterialCost))} />
-        <StatRow label="Projected Labour Cost"   value={formatCurrency(Math.round(result.projectedLabourCost))} />
-        <StatRow label="Projected Machine Cost"  value={formatCurrency(Math.round(result.projectedMachineCost))} />
-        <div className="flex justify-between items-center py-2 mt-1">
-          <span className="text-sm font-semibold text-slate-700">Total Projected Cost</span>
-          <span className="text-sm font-bold text-slate-900">{formatCurrency(Math.round(result.projectedCost))}</span>
-        </div>
-      </div>
-
-      {/* Profit & margin highlight */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="rounded-lg bg-white border border-slate-200 p-3 text-center">
-          <p className="text-xs text-slate-400 mb-1">Projected Profit</p>
-          <p className="text-xl font-bold text-slate-800">{formatCurrency(Math.round(result.projectedProfit))}</p>
-        </div>
-        <div
-          className={`rounded-lg border p-3 text-center ${
-            meetsTarget ? "bg-green-50 border-green-200" : "bg-amber-50 border-amber-200"
-          }`}
-        >
-          <p className="text-xs text-slate-400 mb-1">Projected Margin</p>
-          <p className={`text-xl font-bold ${meetsTarget ? "text-green-700" : "text-amber-700"}`}>
-            {result.projectedMargin.toFixed(1)}%
-          </p>
-        </div>
-      </div>
-
-      {/* Target verdict */}
-      {meetsTarget ? (
-        <div className="flex items-center gap-2 rounded-lg bg-green-50 border border-green-200 px-4 py-3">
-          <CheckCircle className="text-green-600 shrink-0" size={16} />
-          <p className="text-sm text-green-700 font-medium">
-            Meets factory target of {result.targetMargin}%
-          </p>
-        </div>
-      ) : (
-        <div className="flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-200 px-4 py-3">
-          <AlertTriangle className="text-amber-500 shrink-0 mt-0.5" size={16} />
-          <p className="text-sm text-amber-700 font-medium">
-            {result.warning} Consider renegotiating price or reducing costs.
-          </p>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Main Component ───────────────────────────────────────────────────────────
+import Button from "../common/Button.jsx";
+import Card from "../common/Card.jsx";
+import FormField, { Input } from "../common/FormField.jsx";
+import Notice from "../common/Notice.jsx";
+import ReadinessResult from "./ReadinessResult.jsx";
 
 /**
- * OrderReadinessChecker — checks material availability and projects profit before accepting a
- * new order. The calculation is done by the server: POST /api/orders/readiness-check
- * with { quantityMeters, colour, fabricType, expectedRevenue }.
+ * "Can we start this order?" The calculation is done by the server:
+ * POST /api/orders/readiness-check with { quantityMeters, colour, fabricType, expectedRevenue }.
  */
 export default function OrderReadinessChecker() {
-  // Form state — prefilled with the Cotton / Navy Blue / 2000m demo order
+  // Prefilled with the Cotton / Navy Blue / 2000 m demo order
   const [fabricType, setFabricType] = useState("Cotton");
-  const [colour, setColour]         = useState("Navy Blue");
-  const [metres, setMetres]         = useState("2000");
-  const [revenue, setRevenue]       = useState("356000");
+  const [colour, setColour] = useState("Navy Blue");
+  const [metres, setMetres] = useState("2000");
+  const [revenue, setRevenue] = useState("356000");
 
-  const [result, setResult]   = useState(null); // null = not checked yet
-  const [error, setError]     = useState("");
+  const [result, setResult] = useState(null); // null = not checked yet
+  const [error, setError] = useState("");
   const [checking, setChecking] = useState(false);
 
-  async function handleCheck() {
+  async function handleCheck(e) {
+    e.preventDefault();
     setError("");
     setChecking(true);
     try {
@@ -134,95 +35,52 @@ export default function OrderReadinessChecker() {
       setResult(res.data);
     } catch (err) {
       setResult(null);
-      setError(err?.response?.data?.detail || err?.message || "Readiness check failed.");
+      setError(err?.response?.data?.detail || "Could not check this order. Check the details and try again.");
     } finally {
       setChecking(false);
     }
   }
 
-  const clear = (setter) => (e) => { setter(e.target.value); setResult(null); setError(""); };
-
-  // Input field style shared across all inputs
-  const inputCls =
-    "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 " +
-    "focus:outline-none focus:ring-2 focus:ring-blue-300";
+  const clear = (setter) => (e) => {
+    setter(e.target.value);
+    setResult(null);
+    setError("");
+  };
 
   return (
-    <div className="rounded-xl bg-white shadow-sm p-5 space-y-5">
-      <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">
-        Order Readiness Checker
-      </h2>
+    <Card title="Can we start this order?">
+      <form onSubmit={handleCheck} className="mt-3 space-y-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <FormField label="Fabric" required>
+            <Input id="input-fabric-type" required value={fabricType} onChange={clear(setFabricType)} />
+          </FormField>
+          <FormField label="Colour" required>
+            <Input id="input-colour" required value={colour} onChange={clear(setColour)} />
+          </FormField>
+          <FormField label="Quantity (metres)" required>
+            <Input id="input-metres" required type="number" min="1" value={metres} onChange={clear(setMetres)} />
+          </FormField>
+          <FormField label="Expected revenue (rupees)" required>
+            <Input id="input-revenue" required type="number" min="0" value={revenue} onChange={clear(setRevenue)} />
+          </FormField>
+        </div>
 
-      {/* ── Form inputs ── */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <div>
-          <label className="block text-xs text-slate-500 mb-1">Fabric Type</label>
-          <input id="input-fabric-type" className={inputCls} value={fabricType}
-                 onChange={clear(setFabricType)} placeholder="e.g. Cotton" />
-        </div>
-        <div>
-          <label className="block text-xs text-slate-500 mb-1">Colour</label>
-          <input id="input-colour" className={inputCls} value={colour}
-                 onChange={clear(setColour)} placeholder="e.g. Navy Blue" />
-        </div>
-        <div>
-          <label className="block text-xs text-slate-500 mb-1">Quantity (metres)</label>
-          <input id="input-metres" className={inputCls} type="number" min="1" value={metres}
-                 onChange={clear(setMetres)} placeholder="e.g. 2000" />
-        </div>
-        <div>
-          <label className="block text-xs text-slate-500 mb-1">Expected Revenue (₹)</label>
-          <input id="input-revenue" className={inputCls} type="number" min="0" value={revenue}
-                 onChange={clear(setRevenue)} placeholder="e.g. 356000" />
-        </div>
-      </div>
+        <Button id="btn-check-readiness" type="submit" variant="primary" disabled={checking}>
+          {checking ? "Checking" : "Check this order"}
+        </Button>
+      </form>
 
-      {/* ── Check button ── */}
-      <button
-        id="btn-check-readiness"
-        onClick={handleCheck}
-        disabled={checking}
-        className="flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold
-                   text-white hover:bg-blue-700 disabled:opacity-60 transition-colors"
-      >
-        {checking ? "Checking…" : "Check Readiness"}
-        <ChevronRight size={16} />
-      </button>
-
-      {/* ── Server validation / request errors ── */}
       {error && (
-        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <Notice tone="error" className="mt-4">
           {error}
-        </div>
+        </Notice>
       )}
 
-      {/* ── Results (shown after button click) ── */}
       {result && (
-        <div className="space-y-4">
-          <ReadinessBanner result={result} />
-
-          {/* Quantity numbers row */}
-          <div className="grid grid-cols-3 gap-3">
-            {[
-              { label: "Required Yarn", value: `${result.requiredYarnKg.toFixed(0)} kg`, colour: "text-slate-800" },
-              { label: "Available Stock", value: `${result.availableKg.toFixed(0)} kg`, colour: "text-green-700" },
-              {
-                label: "Shortage",
-                value: result.shortageKg > 0 ? `${result.shortageKg.toFixed(0)} kg` : "None",
-                colour: result.shortageKg > 0 ? "text-red-600" : "text-green-700",
-              },
-            ].map((item) => (
-              <div key={item.label} className="rounded-lg bg-slate-50 border border-slate-200 p-3 text-center">
-                <p className="text-xs text-slate-400 mb-1">{item.label}</p>
-                <p className={`text-lg font-bold ${item.colour}`}>{item.value}</p>
-              </div>
-            ))}
-          </div>
-
-          {/* Profit-Aware panel */}
-          <ProfitPanel result={result} />
+        <div className="mt-4">
+          <ReadinessResult result={result} />
         </div>
       )}
-    </div>
+    </Card>
   );
 }

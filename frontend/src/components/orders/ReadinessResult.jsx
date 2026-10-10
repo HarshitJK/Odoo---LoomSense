@@ -1,5 +1,42 @@
+import Notice from "../common/Notice.jsx";
 import { formatCurrency as money } from "../../utils/formatCurrency.js";
-export default function ReadinessResult({ result:r }) {
+import { formatKg, formatPercent } from "../../utils/format.js";
+
+/**
+ * Answer to "Can we start this order?": one clear sentence first, then the four numbers that matter.
+ * result: the server's readiness answer { status, requiredYarnKg, availableKg, shortageKg,
+ *         projectedProfit, projectedMargin, targetMargin, warning, ... }
+ */
+export default function ReadinessResult({ result: r }) {
   if (!r) return null;
-  return <div className="space-y-3"><div className={`rounded-lg p-4 font-bold ${r.shortageKg?"bg-red-50 text-red-700":"bg-green-50 text-green-700"}`}>{r.status.replaceAll("_"," ")}</div><div className="grid grid-cols-3 gap-3">{[["Required Yarn",r.requiredYarnKg],["Available Yarn",r.availableKg],["Shortage",r.shortageKg]].map(([k,v])=><div key={k} className="bg-slate-50 p-3 rounded-lg"><p className="text-xs text-slate-500">{k}</p><b>{v} kg</b></div>)}</div><dl className="grid sm:grid-cols-2 gap-3">{[["Projected Material Cost",r.projectedMaterialCost],["Projected Labour Cost",r.projectedLabourCost],["Projected Machine Cost",r.projectedMachineCost],["Projected Total Cost",r.projectedCost],["Expected Revenue",r.expectedRevenue],["Expected Profit",r.projectedProfit]].map(([k,v])=><div key={k} className="flex justify-between gap-2 text-sm"><dt>{k}</dt><dd className="font-semibold">{money(v)}</dd></div>)}</dl><p className="font-bold">Expected Margin: {r.projectedMargin}% · Target: {r.targetMargin}%</p>{r.warning&&<p className="bg-amber-50 text-amber-800 p-3 rounded-lg">LOW MARGIN WARNING — {r.warning} Management may still accept this order.</p>}{r.estimationWarning&&<p className="text-amber-800">{r.estimationWarning}</p>}</div>;
+  const ready = r.status === "MATERIAL_READY";
+  const rows = [
+    ["Yarn needed", formatKg(r.requiredYarnKg)],
+    ["Yarn in stock", formatKg(r.availableKg)],
+    ["Expected profit", money(r.projectedProfit)],
+    ["Expected margin", formatPercent(r.projectedMargin)],
+  ];
+
+  return (
+    <div className="space-y-3">
+      <Notice tone={ready ? "success" : "error"}>
+        <p className="font-medium">{ready ? "Material ready" : `Not enough material: ${formatKg(r.shortageKg)} short`}</p>
+      </Notice>
+
+      <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
+        {rows.map(([label, value]) => (
+          <div key={label}>
+            <dt className="text-xs text-gray-500">{label}</dt>
+            <dd className="mt-0.5 text-base font-semibold tabular-nums text-gray-900">{value}</dd>
+          </div>
+        ))}
+      </dl>
+
+      {r.warning && (
+        <p className="text-sm text-amber-700">
+          Expected margin is below the factory target of {formatPercent(r.targetMargin, 0)}.
+        </p>
+      )}
+    </div>
+  );
 }

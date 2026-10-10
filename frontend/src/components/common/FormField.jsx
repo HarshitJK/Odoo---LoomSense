@@ -1,12 +1,12 @@
-import { Children, cloneElement, isValidElement, useId } from "react";
+import { Children, cloneElement, forwardRef, isValidElement, useId } from "react";
 
 export const controlClass =
   "block w-full h-10 sm:h-9 rounded-md border border-gray-300 bg-white px-3 text-gray-900 " +
   "disabled:bg-gray-50 disabled:text-gray-500 aria-[invalid=true]:border-red-700";
 
-export function Input({ className = "", ...props }) {
-  return <input className={`${controlClass} ${className}`} {...props} />;
-}
+export const Input = forwardRef(function Input({ className = "", ...props }, ref) {
+  return <input ref={ref} className={`${controlClass} ${className}`} {...props} />;
+});
 
 export function Select({ className = "", children, ...props }) {
   return (

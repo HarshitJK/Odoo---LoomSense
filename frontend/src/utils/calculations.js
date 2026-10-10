@@ -16,3 +16,11 @@ export function marginPercent(revenue, profitValue) {
 export function progressPercent(produced, target) {
   return target ? Math.min(100, Math.round((produced / target) * 100)) : 0;
 }
+
+/** Text colour for a margin: green at 25% and above, amber from 15 to 25%, red below 15%. */
+export function marginClass(margin) {
+  if (margin === null || margin === undefined || Number.isNaN(Number(margin))) return "text-gray-500";
+  if (margin >= 25) return "text-green-700";
+  if (margin >= 15) return "text-amber-700";
+  return "text-red-700";
+}
