@@ -130,6 +130,16 @@ Set `MONGODB_URI=mongodb+srv://...` in `.env`, then `docker compose -f docker-co
 - **Frontend still calls the old API address:** `VITE_API_URL` is baked in at build time. Run `docker compose up --build` (or `docker compose build frontend`) after changing it.
 - **Do not scale the backend:** the simulator and WebSockets live inside the process; run exactly one instance.
 
+## Scanning QR codes
+
+Open **Scan QR** in the sidebar (or the "Scan a roll QR" button on the Quality page), or go to `/scan`. It reads the QR code on a Fabric Passport (or an order tracking link) and opens that page.
+
+- **Camera:** tap *Start camera*. Browsers only allow the live camera on **HTTPS or `localhost`**. On plain HTTP over a LAN address (for example `http://192.168.1.20:5173` on a phone) the camera button is disabled; use one of the two fallbacks below, or serve the app over HTTPS.
+- **Scan from image:** pick a photo or screenshot that contains the QR code. This works on any address.
+- **Type or paste:** enter a roll id (`RL10092` or `RL-10092`), an order id (`ORD104`), or a full passport or tracking link.
+
+Only the path of a scanned link is used, so a QR printed with `localhost` or a LAN IP still opens the app on the address you are on now. Unknown codes never navigate, and a roll that does not exist shows "Roll … not found". The QR on the passport page uses error correction level M with a quiet margin. Set `PASSPORT_BASE_URL` (backend) to the address people will actually use, because that is what the printed QR image from `GET /api/passport/{rollId}/qr` contains. Unit tests for the link parser: `npm test` in `frontend/`.
+
 ## Run the frontend
 
 ```bash
