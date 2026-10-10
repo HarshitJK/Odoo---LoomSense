@@ -15,14 +15,25 @@ NO_ID = {"_id": 0}
 
 
 @router.get("")
-def list_workers():
+def list_workers(month: Optional[str] = None):
+    """Workers with their latest assignment and this month's hours and wages (month defaults to current)."""
+    month = valid_month(month)
     workers = list(dbm.workers().find({}, NO_ID).sort("workerId", 1))
-    latest = {}  # newest attendance record per worker, from one query
-    for rec in dbm.attendance().find({}, NO_ID).sort("date", 1):
+    latest = {}  # newest attendance record per worker
+    in_month = {}  # this month's attendance records per worker
+    for rec in dbm.attendance().find({}, NO_ID).sort("date", 1):  # one query for everything
         latest[rec["workerId"]] = rec
+        if (rec.get("date") or "").startswith(month):
+            in_month.setdefault(rec["workerId"], []).append(rec)
     for w in workers:
         rec = latest.get(w["workerId"])
         w["latestAssignment"] = {k: rec.get(k) for k in ("orderId", "machineId", "date")} if rec else None
+        records = in_month.get(w["workerId"], [])
+        wages = costing.calculate_labour_cost(records, {w["workerId"]: w.get("hourlyRate", 0)})
+        overtime = round(sum(r.get("overtimeHours", 0) for r in records), 2)
+        w["hoursThisMonth"] = round(wages["hours"] - overtime, 2)
+        w["overtimeThisMonth"] = overtime
+        w["wageThisMonth"] = wages["total"]
     return workers
 
 

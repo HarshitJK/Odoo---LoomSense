@@ -115,3 +115,26 @@ def test_monthly_trend_has_four_months_with_data():
     trend = client.get("/api/finance/monthly").json()
     assert len(trend) == 4
     assert all(month["revenue"] > 0 for month in trend)
+
+
+def test_workers_list_has_monthly_hours_and_wages():
+    from app import database as dbm
+    records = list(dbm.attendance().find({"workerId": "EMP021", "date": {"$regex": "^2026-10"}}))
+    hours = sum(r["hoursWorked"] for r in records)
+    overtime = sum(r["overtimeHours"] for r in records)
+    assert hours > 0 and overtime > 0
+
+    workers = client.get("/api/workers?month=2026-10").json()
+    w = next(x for x in workers if x["workerId"] == "EMP021")
+    assert w["hoursThisMonth"] == hours
+    assert w["overtimeThisMonth"] == overtime
+    assert w["wageThisMonth"] == pytest.approx(hours * 90 + overtime * 90 * 1.5, abs=0.01)
+    assert w["latestAssignment"]["orderId"] == "ORD104"  # existing fields unchanged
+    assert w["hourlyRate"] == 90
+
+    # the per-worker wages add up to the wages summary
+    summary = client.get("/api/workers/wages/summary?month=2026-10").json()
+    assert sum(x["wageThisMonth"] for x in workers) == pytest.approx(summary["totalWorkforceCost"], abs=0.01)
+    # a month without attendance gives zeros
+    empty = client.get("/api/workers?month=2025-01").json()
+    assert all(x["wageThisMonth"] == 0 and x["hoursThisMonth"] == 0 for x in empty)

@@ -132,7 +132,8 @@ Quick check without a frontend: `python ws_check.py` in `backend/` prints the fi
 
 ```json
 {"workerId": "EMP021", "name": "Ravi Kumar", "hourlyRate": 90.0, "shift": "B",
- "latestAssignment": {"orderId": "ORD104", "machineId": "W01", "date": "2026-10-10"}}
+ "latestAssignment": {"orderId": "ORD104", "machineId": "W01", "date": "2026-10-10"},
+ "hoursThisMonth": 72.0, "overtimeThisMonth": 7.5, "wageThisMonth": 7942.5}
 ```
 Attendance body and response:
 ```json

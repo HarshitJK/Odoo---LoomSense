@@ -21,7 +21,7 @@ Errors are always `{"detail": "message"}`: 404 not found, 409 already exists / n
 | POST | `/api/machines/simulate` | `{action: start\|stop\|reset\|failure, machineId?, speed?}` (speed 0–100) |
 | GET / POST | `/api/inventory` | Items carry `lowStock` (under 300 kg). POST needs `batchId` |
 | PATCH | `/api/inventory/{batchId}` | `material, colour, quantityKg, costPerKg, supplier` |
-| GET / POST | `/api/workers` | GET adds `latestAssignment`. POST needs `workerId`, `name` |
+| GET / POST | `/api/workers?month=2026-10` | GET adds `latestAssignment` and this month's `hoursThisMonth`, `overtimeThisMonth`, `wageThisMonth` (hours × rate + overtime × rate × 1.5; month defaults to current). POST needs `workerId`, `name` |
 | POST | `/api/attendance` | `{workerId, orderId, machineId, hoursWorked, overtimeHours, date?}`; updates the order's labour cost |
 | GET | `/api/workers/wages/summary?month=2026-10` | Regular wages, overtime pay, total, `labourCostPerOrder[]` |
 
