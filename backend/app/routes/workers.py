@@ -1,9 +1,10 @@
 from datetime import date
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 
 from app import database as dbm
+from app.services.auth import current_user, owner
 from app.models.attendance import Attendance
 from app.models.worker import Worker
 from app.services import costing, profitability
@@ -15,7 +16,7 @@ NO_ID = {"_id": 0}
 
 
 @router.get("")
-def list_workers(month: Optional[str] = None):
+def list_workers(month: Optional[str] = None, user=Depends(current_user)):
     """Workers with their latest assignment and this month's hours and wages (month defaults to current)."""
     month = valid_month(month)
     workers = list(dbm.workers().find({}, NO_ID).sort("workerId", 1))
@@ -34,16 +35,19 @@ def list_workers(month: Optional[str] = None):
         w["hoursThisMonth"] = round(wages["hours"] - overtime, 2)
         w["overtimeThisMonth"] = overtime
         w["wageThisMonth"] = wages["total"]
+    if user["role"] != "OWNER":
+        allowed = {"workerId", "name", "shift", "latestAssignment", "hoursThisMonth", "overtimeThisMonth"}
+        workers = [{k: v for k, v in w.items() if k in allowed} for w in workers]
     return workers
 
 
-@router.get("/wages/summary")
+@router.get("/wages/summary", dependencies=[Depends(owner)])
 def wages_summary(month: Optional[str] = None):
     """Regular wages, overtime pay and labour cost per order for a month (default: current)."""
     return costing.wages_summary(valid_month(month))
 
 
-@router.post("", status_code=201)
+@router.post("", status_code=201, dependencies=[Depends(owner)])
 def create_worker(body: Worker):
     if dbm.workers().find_one({"workerId": body.workerId}):
         raise HTTPException(409, f"Worker {body.workerId} already exists")
@@ -54,7 +58,7 @@ def create_worker(body: Worker):
 
 
 @attendance_router.post("", status_code=201)
-def log_attendance(body: Attendance):
+def log_attendance(body: Attendance, user=Depends(current_user)):
     if not dbm.workers().find_one({"workerId": body.workerId}):
         raise HTTPException(404, f"Worker {body.workerId} not found")
     doc = body.model_dump()
@@ -64,4 +68,6 @@ def log_attendance(body: Attendance):
     doc.pop("_id", None)
     if doc.get("orderId") and dbm.orders().find_one({"orderId": doc["orderId"]}):
         profitability.refresh_order(doc["orderId"])  # keep order costs in sync
+    if user["role"] != "OWNER":
+        doc.pop("hourlyRate", None)
     return doc

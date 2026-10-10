@@ -1,3 +1,4 @@
+import { useAuth } from "../context/AuthContext.jsx";
 import PageHeader from "../components/common/PageHeader.jsx";
 import ApiErrorBanner from "../components/common/ApiErrorBanner.jsx";
 import KpiCard from "../components/common/KpiCard.jsx";
@@ -32,11 +33,13 @@ const mockWorkers = () =>
 const mockWages = () => ({ totalRegularWages: 0, totalOvertimePay: 0, totalWorkforceCost: 0, labourCostPerOrder: [] });
 
 export default function WorkersPage() {
+  const { user } = useAuth();
+  const isOwner = user?.role === "OWNER";
   const workers = useApi("/api/workers", { mock: mockWorkers });
-  const wages = useApi("/api/workers/wages/summary", { mock: mockWages });
+  const wages = useApi("/api/workers/wages/summary", { mock: mockWages, enabled: isOwner });
   const orders = useApi("/api/orders", { mock: () => mockOrderIds.map((orderId) => ({ orderId })) });
   const machines = useApi("/api/machines", { mock: () => mockMachineIds.map((machineId) => ({ machineId })) });
-  const leakage = useApi("/api/finance/profit-leakage", { mock: null }); // refreshed after hours are saved
+  const leakage = useApi("/api/finance/profit-leakage", { mock: null, enabled: isOwner }); // refreshed after hours are saved
 
   const errors = [workers, wages, orders, machines].map((r) => r.error).filter(Boolean);
   const retryAll = () => [workers, wages, orders, machines, leakage].forEach((r) => r.reload());
@@ -62,7 +65,7 @@ export default function WorkersPage() {
 
   return (
     <>
-      <PageHeader title="Workers" subtitle="Hours worked, wages, and what labour costs each order." />
+      <PageHeader title="Workers" subtitle={isOwner ? "Hours worked, wages, and what labour costs each order." : "Log worker hours against machines and orders."} />
       <MockBadge />
 
       {errors.slice(0, 1).map((error) => (
@@ -84,7 +87,7 @@ export default function WorkersPage() {
           </div>
         )}
 
-        {summary && (
+        {isOwner && summary && (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <KpiCard title="Regular wages" value={formatCurrency(summary.totalRegularWages)} subtitle="This month" />
             <KpiCard title="Overtime pay" value={formatCurrency(summary.totalOvertimePay)} />
@@ -92,9 +95,9 @@ export default function WorkersPage() {
           </div>
         )}
 
-        {workers.data && <WorkersTable workers={workers.data} />}
+        {workers.data && <WorkersTable workers={workers.data} showWages={isOwner} />}
 
-        {summary && <LabourCostPerOrder rows={summary.labourCostPerOrder} />}
+        {isOwner && summary && <LabourCostPerOrder rows={summary.labourCostPerOrder} />}
       </div>
     </>
   );

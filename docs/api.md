@@ -198,3 +198,29 @@ Server → client only, JSON. On connect a `snapshot`, then every 3 s a `machine
 `{"type": "machine_update", "timestamp": "...", "simulator": {"running": true, "speed": 1.0}, "machines": [<machine object>, ...]}`.
 Events: `{"type": "event", "event": "order_completed" | "machine_failure" | "simulator_started" | "simulator_stopped" | "demo_reset", "machineId", "orderId", "message", "timestamp"}`.
 If MongoDB is down on connect, the first message is `{"type": "error", "message": ...}`.
+
+
+## Demo-readiness corrections
+
+- GET /api/finance/dashboard and GET /api/finance/monthly now use earned production revenue and
+  dated consumed-material, labour, machine, quality and other incurred costs. Dashboard netProfit
+  is revenue minus productionCost; trend profit is revenue minus cost. See architecture.md.
+- kpis.buyerPayments is displayed as **Cash received from buyers** (selected month).
+  kpis.paymentsPending is **Still to collect** (all orders, lifetime balance).
+  Redundant kpis.paymentsReceived is removed. Order profits are labelled **Lifetime order profit**.
+- GET /api/finance/month-end retains its cash-and-incurred-cost contract and compatibility fields.
+- GET /api/workers and POST /api/attendance allow OWNER and PRODUCTION_MANAGER.
+  Manager worker rows contain only workerId, name, shift, latestAssignment (orderId, machineId, date),
+  hoursThisMonth and overtimeThisMonth. Attendance responses omit hourlyRate for managers.
+  The server snapshots the worker's rate; sending hourlyRate or other unknown fields returns 422.
+  GET /api/workers/wages/summary and POST /api/workers remain owner-only (403 for manager/QC).
+  QC gets 403 on workers and attendance. No worker-edit route is introduced.
+- POST /api/orders continues to create stage-gated orders with a first-off check by default.
+  IDs are generated (ORD112 on fresh seed). Legacy seeded orders remain compatible.
+- GET /api/buyer/track/{token} returns qualityStatus IN_PROGRESS until final inspection passes,
+  including open holds/reinspection. Safe wording is "Quality verification in progress".
+  After final approval it returns PASSED / "Quality approved". A legacy order must be complete
+  with its last roll passed. The buyer allowlist still excludes internal and financial fields.
+- Readiness example: POST /api/orders/readiness-check with quantityMeters 2000, fabricType Cotton,
+  colour Navy Blue, expectedRevenue 350000 gives required 1180 kg, available 950 kg, shortage 230 kg,
+  projectedMargin 27.3 on a fresh seed. Yarn price and cost formulas are unchanged.

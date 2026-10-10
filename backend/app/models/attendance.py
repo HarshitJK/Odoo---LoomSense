@@ -1,10 +1,11 @@
 from typing import Optional
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from datetime import date as Date
 
 
 class Attendance(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
     workerId: str
     orderId: Optional[str] = None
     machineId: Optional[str] = None

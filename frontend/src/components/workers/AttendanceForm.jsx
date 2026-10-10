@@ -59,7 +59,6 @@ export default function AttendanceForm({ workerProfiles = [], orders = [], machi
         orderId: formData.orderId,
         hoursWorked: hours,
         overtimeHours: overtime,
-        hourlyRate: profile.hourlyRate,
         date: formData.date,
       }); // throws with the server's message on failure
     } catch (err) {
