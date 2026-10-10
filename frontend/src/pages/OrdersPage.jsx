@@ -19,7 +19,7 @@ import { formatCurrency as money } from "../utils/formatCurrency.js";
 import { formatDate, formatMetres, formatPercent } from "../utils/format.js";
 import { ORDER_STAGE_CODES, statusLabel } from "../utils/labels.js";
 
-const blank = { buyerName: "", fabricType: "Cotton", colour: "Navy Blue", quantityMeters: 2000, revenue: 356000, deadline: "" };
+const blank = { buyerName: "", fabricType: "Cotton", colour: "Navy Blue", quantityMeters: 2000, revenue: 350000, deadline: "" };
 const COST_LINES = [["rawMaterial", "Raw material"], ["labour", "Labour"], ["machine", "Machines"], ["rework", "Rework and quality loss"], ["other", "Other"]];
 
 // Newest order first: ORD109 before ORD99

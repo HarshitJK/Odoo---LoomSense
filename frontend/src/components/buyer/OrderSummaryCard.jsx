@@ -39,7 +39,7 @@ export default function OrderSummaryCard({ order }) {
         <dl>
           <Row label="Expected completion">{formatDate(order.expectedCompletion, "Not set yet")}</Row>
           <Row label="Quality">
-            {order.qualityMessage ? <StatusBadge label={order.qualityMessage} tone={order.qualityStatus === "PASSED" ? "good" : "warn"} /> : <StatusBadge status={order.qualityStatus} />}
+            {order.qualityMessage ? <StatusBadge label={order.qualityMessage} tone={order.qualityStatus === "PASSED" ? "good" : "warn"} /> : <StatusBadge label={order.qualityStatus === "PASSED" ? "Quality approved" : "Quality verification in progress"} tone={order.qualityStatus === "PASSED" ? "good" : "warn"} />}
           </Row>
           <Row label="Dispatch"><StatusBadge status={order.dispatchStatus} /></Row>
         </dl>

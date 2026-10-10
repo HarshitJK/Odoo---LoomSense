@@ -536,15 +536,15 @@ def buyer_quality(order: dict, rolls: list):
     """(qualityStatus, qualityMessage, buyer stage index) for a gated order. Safe words only."""
     stage = order["currentStage"]
     if order.get("qualityHold"):
-        status, message = "IN_REVIEW", "Rework verification"
+        status, message = "IN_PROGRESS", "Quality verification in progress"
     elif order.get("stageStatus") == "QC_PENDING":
-        status, message = "PENDING", "Quality verification in progress"
+        status, message = "IN_PROGRESS", "Quality verification in progress"
     else:
         latest = latest_stage_inspection(order["orderId"], "FINAL_QC", rolls)
         if latest and latest.get("status") == "PASSED":
             status, message = "PASSED", "Quality approved"
         else:
-            status, message = ("PENDING" if rolls else "NOT_STARTED"), None
+            status, message = "IN_PROGRESS", "Quality verification in progress"
     done = stage == QC_STAGES[-1] and order.get("stageStatus") == "COMPLETE"
     return status, message, (len(QC_STAGES) if done else QC_STAGE_BUYER_INDEX[stage])
 
