@@ -7,6 +7,8 @@ COPY . .
 # Vite bakes the API URL into the bundle at build time, so changing it needs a rebuild
 ARG VITE_API_URL=http://localhost:8000
 ENV VITE_API_URL=$VITE_API_URL
+# Limit Node memory to avoid OOM kills on small AWS EC2 instances (like t2.micro)
+ENV NODE_OPTIONS="--max-old-space-size=512"
 RUN npm run build
 
 # ---- serve ----
