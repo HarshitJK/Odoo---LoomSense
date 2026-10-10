@@ -9,6 +9,8 @@ class QualityCheck(BaseModel):
     machineId: Optional[str] = None
     yarnBatch: Optional[str] = None
     shift: Optional[str] = None
+    buyerName: Optional[str] = None
     status: str = "PENDING"  # PASSED | FAILED | REWORK | PENDING
     defects: List[str] = []
     reworkCost: float = 0
+    date: Optional[str] = None

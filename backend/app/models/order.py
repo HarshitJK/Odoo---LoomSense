@@ -20,6 +20,7 @@ class Order(BaseModel):
     quantityMeters: float = 0
     producedMeters: float = 0
     status: str = "PENDING"
+    orderDate: Optional[str] = None
     machineId: Optional[str] = None
     deadline: Optional[str] = None
     revenue: float = 0

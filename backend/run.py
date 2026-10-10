@@ -1,4 +1,4 @@
-"""Run the API with: python run.py  (same as `uvicorn app.main:app --reload`)."""
+"""Start the API on port 8000 with reload: python run.py"""
 import uvicorn
 
 if __name__ == "__main__":

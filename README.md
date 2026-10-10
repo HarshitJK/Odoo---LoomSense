@@ -35,7 +35,7 @@ Copy `.env.example` to `backend/.env` (never commit it).
 | Variable | Where | Default |
 |---|---|---|
 | `MONGODB_URI` | backend | `mongodb://localhost:27017` |
-| `MONGODB_DB_NAME` | backend | `loomsense` |
+| `DB_NAME` | backend | `loomsense` |
 | `CORS_ORIGINS` | backend | `http://localhost:5173` |
 | `VITE_API_URL` | frontend (`frontend/.env`) | `http://localhost:8000` |
 

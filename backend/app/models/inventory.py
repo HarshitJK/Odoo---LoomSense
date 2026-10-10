@@ -10,3 +10,4 @@ class InventoryBatch(BaseModel):
     quantityKg: float = 0
     costPerKg: float = 0
     supplier: Optional[str] = None
+    receivedDate: Optional[str] = None

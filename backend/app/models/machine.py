@@ -7,7 +7,7 @@ class Machine(BaseModel):
     machineId: str
     name: Optional[str] = None
     type: Optional[str] = None  # e.g. WEAVING
-    status: str = "IDLE"  # RUNNING | IDLE | MAINTENANCE
+    status: str = "IDLE"  # RUNNING | IDLE | DOWN
     currentOrderId: Optional[str] = None
     productionRate: float = 0
     producedMeters: float = 0

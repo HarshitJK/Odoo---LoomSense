@@ -1,7 +1,6 @@
 fastapi
 uvicorn[standard]
-pymongo
-python-dotenv
 pydantic
-qrcode
-pillow
+pymongo[srv]
+python-dotenv
+qrcode[pil]
