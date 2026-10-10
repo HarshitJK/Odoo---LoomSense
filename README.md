@@ -279,12 +279,11 @@ App: http://localhost:5173
 
 ## Known limitations
 
-- **No authentication.** Only `POST /api/demo/reset` is protected (by `ADMIN_KEY`). Every other endpoint, including internal finance data, is open; CORS is the only barrier. Add auth before real use.
-- **One instance only.** The simulator and WebSocket connections are in-process. Scaling out would duplicate the simulator. On a free Render plan the service sleeps when idle, which also pauses the simulator.
-- **Not tested on Atlas or Render.** Everything was run against a local MongoDB. The dashboard answers in about 40 ms locally using about 9 queries; on Atlas, latency per query will dominate (expect well under a second, but this is not measured).
-- **Simulated factory.** Machine data is generated, not read from hardware. One real second counts as one factory minute, and orders sharing two machines (ORD108) split their metres between them.
-- **Provisional margins.** An order still in production compares full revenue with partial cost, so its margin looks high (`provisional: true`). Monthly totals count revenue pro-rata instead.
-- **Seed economics.** With 0.59 kg of yarn per metre at ₹180/kg, the seeded revenues had to be raised (ORD104 is ₹356,000) to give sensible margins. The rework material loss uses the full yarn value, so 120 m costs ₹14,532, not about ₹4,180; set `REWORK_MATERIAL_LOSS_SHARE` (about 0.19) in `config.py` to match the context example.
-- **Dates.** The dashboard and monthly trend use the server's current month, and the seed dates run July to October 2026, so they look empty from about February 2027 unless the seed dates are moved.
-- **Simple data model.** No delete endpoints, no pagination, order status is free text, and stored order costs only refresh when the API changes something (reads always recompute, but a hand-edited database can leave stored values stale).
-- **Demo reset wipes everything**, including any data created through the API.
+- **Single process only.** The simulator and WebSocket connections are in-process. Scaling out would duplicate the simulator. On a free Render plan the service sleeps when idle, which also pauses the simulator.
+- **Workers do not have their own logins.** Worker attendance is entered by the owner or production manager; there is no worker self-service portal.
+- **No GST or bank reconciliation.** The system tracks rupee costs and profit using a management-accounting estimate. GST ledger, bank disbursement ledger and statutory revenue recognition are not implemented.
+- **Simulated machine data.** Production metres come from a Python simulator (1 real second = 1 factory minute). In production, replace with real PLC / IoT readings via `POST /api/machines/{id}/readings` (same endpoint).
+- **Provisional margins.** An order still in production compares full revenue with partial cost, so its margin looks high (`provisional: true`). Monthly totals count earned revenue pro-rata to production progress.
+- **Dates.** The dashboard and monthly trend use the server's current month, and the seed dates run July–October 2026. From about February 2027 the seeded months will be out of the 4-month window; move the seed dates to keep them visible.
+- **Not tested on Atlas or Render.** Everything was developed against a local MongoDB. The dashboard answers in about 40 ms locally (about 9 queries); on Atlas, latency per query dominates.
+- **Demo reset wipes everything**, including any orders or quality records created during the demo. Use `POST /api/demo/reset` (with `X-Admin-Key`) between runs.
