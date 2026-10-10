@@ -1,4 +1,6 @@
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+from pymongo.errors import PyMongoError
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import CORS_ORIGINS
@@ -20,10 +22,16 @@ app.include_router(orders.router, prefix="/api/orders", tags=["orders"])
 app.include_router(machines.router, prefix="/api/machines", tags=["machines"])
 app.include_router(inventory.router, prefix="/api/inventory", tags=["inventory"])
 app.include_router(workers.router, prefix="/api/workers", tags=["workers"])
+app.include_router(workers.attendance_router, prefix="/api/attendance", tags=["attendance"])
 app.include_router(quality.router, prefix="/api/quality", tags=["quality"])
 app.include_router(finance.router, prefix="/api/finance", tags=["finance"])
 app.include_router(buyers.router, prefix="/api/buyer", tags=["buyer"])
 app.include_router(machines_ws.router)
+
+
+@app.exception_handler(PyMongoError)
+def mongo_error(request, exc):
+    return JSONResponse(status_code=503, content={"detail": "MongoDB is not available"})
 
 
 @app.get("/")

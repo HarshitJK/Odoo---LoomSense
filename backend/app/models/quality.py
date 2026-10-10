@@ -14,3 +14,8 @@ class QualityCheck(BaseModel):
     defects: List[str] = []
     reworkCost: float = 0
     date: Optional[str] = None
+
+
+class QualityCreate(QualityCheck):
+    """Body for POST /api/quality. rollId is generated if omitted."""
+    rollId: Optional[str] = None

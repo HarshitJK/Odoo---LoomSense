@@ -15,3 +15,9 @@ class Machine(BaseModel):
     temperature: Optional[float] = None
     costPerHour: float = 0
     efficiency: float = 0
+
+
+class MachineUpdate(BaseModel):
+    status: Optional[str] = None
+    currentOrderId: Optional[str] = None
+    productionRate: Optional[float] = None
