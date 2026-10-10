@@ -21,5 +21,7 @@ Speed up a demo: `curl -X POST localhost:8000/api/machines/simulate -H "Content-
 
 Run like production: `PORT=8000 uvicorn app.main:app --host 0.0.0.0 --port $PORT` (see `Procfile`, `../render.yaml`).
 Full demo story through the API: `python demo_flow.py` (set `ADMIN_KEY` in `.env` to reset the data first).
+
+Stage-gated quality control demo through the API with the owner, manager and QC logins: `python demo_quality_flow.py` (it creates a new order each run and prints PASS or FAIL per step; the seed also adds three demo orders, ORD109 to ORD111).
 Reset the demo remotely: `curl -X POST localhost:8000/api/demo/reset -H "X-Admin-Key: $ADMIN_KEY"`.
 Test tools (pytest, httpx): `pip install -r requirements-dev.txt`.

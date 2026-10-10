@@ -3,6 +3,7 @@ import ProgressBar from "../common/ProgressBar.jsx";
 import { formatCurrency } from "../../utils/formatCurrency.js";
 import { progressPercent } from "../../utils/calculations.js";
 import { formatMetres } from "../../utils/format.js";
+import { qcStageLabel, stageQcBadge } from "../../utils/labels.js";
 
 /**
  * MachineCard: compact, clickable card for one machine. Clicking opens MachineDetailPanel.
@@ -13,7 +14,9 @@ import { formatMetres } from "../../utils/format.js";
  *   onClick - called when the card is opened
  */
 export default function MachineCard({ machine, onClick }) {
-  const { machineId, status, orderId, producedMeters, targetMeters, costPerHour, runtimeHours, orderMachineCost } = machine;
+  const { machineId, status, orderId, producedMeters, targetMeters, costPerHour, runtimeHours, orderMachineCost,
+    orderStage, stageStatus, pendingInspection, holdReason, blockReason } = machine;
+  const qc = orderStage ? stageQcBadge(stageStatus, pendingInspection) ?? { label: "In progress", tone: "neutral" } : null;
 
   const progress = progressPercent(producedMeters, targetMeters);
   // Prefer the server's number (orderMachineCost); compute only for mock data
@@ -43,6 +46,14 @@ export default function MachineCard({ machine, onClick }) {
       </div>
 
       <p className="text-sm text-gray-600">{orderId ? `Order ${orderId}` : "No order"}</p>
+
+      {qc && (
+        <p className="flex flex-wrap items-center gap-2 text-sm text-gray-900">
+          {qcStageLabel(orderStage)} <StatusBadge label={qc.label} tone={qc.tone} />
+        </p>
+      )}
+      {holdReason && <p className="text-xs text-red-700">{holdReason}</p>}
+      {!holdReason && blockReason && <p className="text-xs text-amber-700">{blockReason}</p>}
 
       {targetMeters > 0 && (
         <ProgressBar value={progress} label={`${formatMetres(producedMeters)} of ${formatMetres(targetMeters)}`} />

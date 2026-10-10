@@ -9,6 +9,8 @@ import { formatPercent } from "../../utils/format.js";
  */
 export default function ProfitLeakagePanel({ leakage }) {
   const { orderId, expectedMargin, actualMargin, leaks = [], recommendation } = leakage;
+  // Quality failures found by stage inspections (their cost is already in the order's cost)
+  const qualityLoss = leaks.filter((l) => l.type === "QUALITY_FAILURE").reduce((sum, l) => sum + l.amount, 0);
 
   return (
     <Card title="Where profit was lost">
@@ -28,6 +30,12 @@ export default function ProfitLeakagePanel({ leakage }) {
         </ul>
       ) : (
         <p className="mt-3 text-sm text-gray-600">No single cause stands out for this order.</p>
+      )}
+
+      {qualityLoss > 0 && (
+        <p className="mt-3 text-sm text-gray-900">
+          Quality loss on this order: <span className="font-medium">{formatCurrency(qualityLoss)}</span>
+        </p>
       )}
 
       {recommendation && <p className="mt-3 text-sm text-gray-900">{recommendation}</p>}

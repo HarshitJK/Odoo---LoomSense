@@ -80,8 +80,10 @@ export default function FabricPassportPage() {
           <Row label="Machine">{roll.machineId}</Row>
           <Row label="Shift">{shiftLabel(roll.shift)}</Row>
           <Row label="Date">{formatDateTime(roll.producedAt)}</Row>
-          <Row label="Result"><StatusBadge status={roll.status} /></Row>
-          <Row label="Defects">{defectsText(roll.defects)}</Row>
+          <Row label="Result">
+            {roll.final ? <StatusBadge status={roll.status} /> : <StatusBadge label="Pending final inspection" tone="warn" />}
+          </Row>
+          {roll.final && <Row label="Defects">{defectsText(roll.defects)}</Row>}
         </dl>
       </Card>
 

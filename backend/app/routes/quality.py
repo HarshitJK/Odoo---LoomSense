@@ -104,7 +104,12 @@ def create_roll(body: QualityCreate, user=Depends(current_user)):
 
 @router.get("/options")
 def quality_options():
-    return {"orders": list(dbm.orders().find({}, {"_id": 0, "orderId": 1, "buyerName": 1})),
+    orders = [{"orderId": o["orderId"], "buyerName": o.get("buyerName"), "machineId": o.get("machineId"),
+               "yarnBatch": o.get("yarnBatch"),
+               **{k: v for k, v in quality_gate.gate_view(o).items()
+                  if k in ("gated", "currentStage", "stageStatus", "pendingInspectionType", "sampleMeters")}}
+              for o in dbm.orders().find({}, NO_ID).sort("orderId", 1)]
+    return {"orders": orders,
             "machines": list(dbm.machines().find({}, {"_id": 0, "machineId": 1, "name": 1})),
             "batches": list(dbm.inventory().find({}, {"_id": 0, "batchId": 1, "material": 1, "colour": 1}))}
 

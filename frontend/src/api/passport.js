@@ -15,5 +15,6 @@ export function normalisePassport(p) {
     status: p.qualityStatus,
     defects: Array.isArray(p.defects) ? p.defects : [],
     reworkStatus: p.reworkStatus,
+    final: p.final !== false, // old passports have no flag and are final
   };
 }

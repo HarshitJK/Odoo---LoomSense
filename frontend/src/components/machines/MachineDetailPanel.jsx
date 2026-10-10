@@ -5,6 +5,7 @@ import ProgressBar from "../common/ProgressBar.jsx";
 import { formatCurrency } from "../../utils/formatCurrency.js";
 import { progressPercent } from "../../utils/calculations.js";
 import { formatDateTime, formatHours, formatMetres, formatPercent } from "../../utils/format.js";
+import { qcStageLabel, stageQcBadge } from "../../utils/labels.js";
 
 function Row({ label, value }) {
   return (
@@ -39,7 +40,9 @@ export default function MachineDetailPanel({ machine, onClose }) {
   const {
     machineId, name, status, orderId, producedMeters, targetMeters, productionRate,
     temperature, efficiency, estimatedCompletion, costPerHour, runtimeHours, orderMachineCost, costPerMeter,
+    orderStage, stageStatus, pendingInspection, holdReason,
   } = machine;
+  const qc = orderStage ? stageQcBadge(stageStatus, pendingInspection)?.label ?? "In progress" : null;
 
   const progress = progressPercent(producedMeters, targetMeters);
   // Prefer the server's numbers (orderMachineCost, costPerMeter); compute only for mock data
@@ -79,6 +82,8 @@ export default function MachineDetailPanel({ machine, onClose }) {
         <div className="flex-1 space-y-5 overflow-y-auto px-5 py-4">
           <dl>
             <Row label="Order" value={orderId ?? "No order"} />
+            {orderStage && <Row label="Stage" value={`${qcStageLabel(orderStage)}, ${qc.toLowerCase()}`} />}
+            {holdReason && <Row label="Hold reason" value={holdReason} />}
           </dl>
 
           {targetMeters > 0 && (

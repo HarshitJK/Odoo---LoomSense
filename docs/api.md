@@ -172,7 +172,7 @@ problem, defect, severity, quality loss, profit or supplier data is ever returne
 **Fabric passport** adds `final`. It is `true` for old rolls and, for gated orders, only after a PASSED FINAL inspection. Before
 that `qualityStatus` is `PENDING` and `defects` is empty. It never contains costs.
 
-**Machine object** adds `orderStage, stageStatus, holdReason, blockReason` (null for orders that are not gated).
+**Machine object** adds `orderStage, stageStatus, pendingInspection, holdReason, blockReason` (null for orders that are not gated).
 
 ## Finance
 | Method | Path | Notes |

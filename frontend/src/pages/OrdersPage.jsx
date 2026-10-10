@@ -11,6 +11,7 @@ import StatusBadge from "../components/common/StatusBadge.jsx";
 import { Table, THead, Th, TBody, Tr, Td, useRowLimit, ShowAll } from "../components/common/Table.jsx";
 import ReadinessResult from "../components/orders/ReadinessResult.jsx";
 import BuyerLink from "../components/orders/BuyerLink.jsx";
+import ProductionJourney from "../components/orders/ProductionJourney.jsx";
 import useApi from "../hooks/useApi.js";
 import client from "../api/client.js";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -19,7 +20,7 @@ import { formatDate, formatMetres, formatPercent } from "../utils/format.js";
 import { ORDER_STAGE_CODES, statusLabel } from "../utils/labels.js";
 
 const blank = { buyerName: "", fabricType: "Cotton", colour: "Navy Blue", quantityMeters: 2000, revenue: 356000, deadline: "" };
-const COST_LINES = [["rawMaterial", "Raw material"], ["labour", "Labour"], ["machine", "Machines"], ["rework", "Rework"], ["other", "Other"]];
+const COST_LINES = [["rawMaterial", "Raw material"], ["labour", "Labour"], ["machine", "Machines"], ["rework", "Rework and quality loss"], ["other", "Other"]];
 
 // Newest order first: ORD109 before ORD99
 const orderNumber = (o) => Number(String(o.orderId).replace(/\D/g, "")) || 0;
@@ -221,6 +222,9 @@ export default function OrdersPage() {
               <ReadinessResult result={readiness} />
             </section>
 
+            <ProductionJourney key={selected.orderId} order={selected} onChanged={updateSelected} />
+
+            {!selected.gated && (
             <section className="space-y-3">
               <h3 className="text-sm font-semibold text-gray-900">Order stage</h3>
               <FormField label="Stage">
@@ -241,6 +245,7 @@ export default function OrdersPage() {
                 </Select>
               </FormField>
             </section>
+            )}
 
             <form
               className="space-y-3"

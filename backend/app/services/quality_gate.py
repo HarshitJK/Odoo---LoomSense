@@ -354,8 +354,9 @@ def create_inspection(data: dict, user: dict) -> tuple:
 
 
 def _impact(rec: dict) -> dict:
-    return {"additionalLabour": rec.get("additionalLabourCost", 0), "machineCost": rec.get("additionalMachineCost", 0),
-            "materialLoss": rec.get("scrapMaterialCost", 0), "total": costing.quality_loss(rec)}
+    return {"rework": rec.get("reworkCost", 0), "additionalLabour": rec.get("additionalLabourCost", 0),
+            "machineCost": rec.get("additionalMachineCost", 0), "materialLoss": rec.get("scrapMaterialCost", 0),
+            "total": costing.quality_loss(rec)}
 
 
 def _apply_effects(order: dict, rec: dict, failed_rec) -> None:

@@ -100,9 +100,10 @@ def build_views(machines: list, orders: dict) -> list:
 def _stage_view(order) -> dict:
     """Quality-gate state of the machine's order, for the production screen."""
     if not order or not quality_gate.is_gated(order):
-        return {"orderStage": None, "stageStatus": None, "holdReason": None, "blockReason": None}
+        return {"orderStage": None, "stageStatus": None, "pendingInspection": None, "holdReason": None, "blockReason": None}
     hold = order.get("qualityHold") or {}
     return {"orderStage": order["currentStage"], "stageStatus": order["stageStatus"],
+            "pendingInspection": order.get("pendingInspectionType"),
             "holdReason": hold.get("holdReason"), "blockReason": order.get("productionBlockReason")}
 
 
