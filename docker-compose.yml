@@ -1,0 +1,74 @@
+# Whole stack with one command:  docker compose up --build
+# Every value has a default, so no .env file is needed (copy .env.example to .env to change them).
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    ports:
+      - "${MONGO_PORT:-27017}:27017"   # for MongoDB Compass: mongodb://localhost:27017
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # One-shot job: loads demo data only if the database is empty (FORCE_SEED=true reloads it)
+  seed:
+    build: ./backend
+    command: ["python", "docker_seed.py"]
+    environment:
+      MONGODB_URI: ${MONGODB_URI:-mongodb://mongo:27017}
+      DB_NAME: ${DB_NAME:-loomsense}
+      FORCE_SEED: ${FORCE_SEED:-false}
+    depends_on:
+      mongo:
+        condition: service_healthy
+    restart: "no"
+
+  # Never scale this service: the machine simulator and WebSockets live inside the process
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    environment:
+      MONGODB_URI: ${MONGODB_URI:-mongodb://mongo:27017}
+      DB_NAME: ${DB_NAME:-loomsense}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+      PASSPORT_BASE_URL: ${PASSPORT_BASE_URL:-http://localhost:5173}
+      ADMIN_KEY: ${ADMIN_KEY:-change-me}
+      SIMULATOR_AUTOSTART: ${SIMULATOR_AUTOSTART:-true}
+    depends_on:
+      mongo:
+        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-5173}:80"
+    depends_on:
+      - backend
+
+  # Feeder mode: replays sample machine readings to the API. Start with the `feeder` profile AND
+  # SIMULATOR_AUTOSTART=false, otherwise the built-in simulator and the feeder both move the machines.
+  machine-feeder:
+    profiles: ["feeder"]
+    build: ./backend
+    command: ["python", "machine_feeder.py"]
+    environment:
+      API_URL: http://backend:8000
+      FEEDER_DELAY_SECONDS: ${FEEDER_DELAY_SECONDS:-3}
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  mongo-data:

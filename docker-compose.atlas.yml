@@ -1,0 +1,13 @@
+# Use MongoDB Atlas (or any external MongoDB) instead of the local container:
+#   1. put your connection string in .env:  MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net
+#   2. docker compose -f docker-compose.yml -f docker-compose.atlas.yml up --build
+# The mongo service is not started, and nothing waits for it.
+services:
+  mongo:
+    profiles: ["local-mongo"]
+  seed:
+    depends_on: !reset []
+  backend:
+    depends_on: !override
+      seed:
+        condition: service_completed_successfully
