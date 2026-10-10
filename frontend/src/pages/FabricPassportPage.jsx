@@ -118,7 +118,7 @@ export default function FabricPassportPage() {
         {/* QR Code Section */}
         <div className="flex flex-col items-center justify-center p-4 bg-slate-50 rounded-xl border border-slate-200/80">
           <div className="bg-white p-3 rounded-lg shadow-xs border border-slate-100">
-            <QRCodeSVG value={qrUrl} size={160} />
+            <QRCodeSVG value={qrUrl} size={200} level="M" marginSize={4} bgColor="#ffffff" fgColor="#000000" />
           </div>
           <p className="text-[11px] font-mono font-semibold text-slate-700 mt-3 text-center">
             {roll.rollId}

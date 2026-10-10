@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
+import { ScanLine } from "lucide-react";
 import PageHeader from "../components/common/PageHeader.jsx";
 import ApiErrorBanner from "../components/common/ApiErrorBanner.jsx";
 import MockBadge from "../components/common/MockBadge.jsx";
@@ -45,6 +47,13 @@ export default function QualityPage() {
         subtitle="Fabric quality checks, defect cost impact and traceability records (Feature 4)"
       />
       <MockBadge />
+
+      <Link
+        to="/scan"
+        className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg shadow-sm"
+      >
+        <ScanLine className="w-4 h-4" /> Scan a roll QR
+      </Link>
 
       <ApiErrorBanner error={error} onRetry={retryAll} />
 

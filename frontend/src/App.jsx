@@ -8,6 +8,7 @@ import WorkersPage from "./pages/WorkersPage.jsx";
 import QualityPage from "./pages/QualityPage.jsx";
 import FabricPassportPage from "./pages/FabricPassportPage.jsx";
 import BuyerTrackingPage from "./pages/BuyerTrackingPage.jsx";
+import ScannerPage from "./pages/ScannerPage.jsx";
 
 export default function App() {
   return (
@@ -16,6 +17,7 @@ export default function App() {
       <Route path="/passport/:rollId" element={<FabricPassportPage />} />
       <Route path="/track" element={<BuyerTrackingPage />} />
       <Route path="/track/:orderId" element={<BuyerTrackingPage />} />
+      <Route path="/scan" element={<ScannerPage />} />
 
       {/* Internal pages inside the main layout */}
       <Route element={<MainLayout />}>
