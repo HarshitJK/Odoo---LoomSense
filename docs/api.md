@@ -118,3 +118,4 @@ Server → client only, JSON. On connect a `snapshot`, then every 3 s a `machine
 `{"type": "machine_update", "timestamp": "...", "simulator": {"running": true, "speed": 1.0}, "machines": [<machine object>, ...]}`.
 Events: `{"type": "event", "event": "order_completed" | "machine_failure" | "simulator_started" | "simulator_stopped" | "demo_reset", "machineId", "orderId", "message", "timestamp"}`.
 If MongoDB is down on connect, the first message is `{"type": "error", "message": ...}`.
+
