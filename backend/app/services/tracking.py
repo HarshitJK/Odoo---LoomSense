@@ -83,10 +83,13 @@ def track_order(order: dict) -> dict:
     message = None
     if quality_gate.is_gated(order):
         # Stage-gated order: show only safe wording, never what failed, who, or what it cost
-        quality, message, index = quality_gate.buyer_quality(order, rolls)
+        quality, message, index = quality_gate.buyer_quality(order, sorted(rolls, key=quality_gate._sort_key))
         stages = build_stages(order.get("status", ""), progress, index)
     else:
-        quality = quality_status(rolls)
+        latest = max(rolls, key=lambda r: (r.get("date") or "", r.get("producedAt") or "", r.get("rollId") or ""), default={})
+        complete = order.get("status") in DISPATCHED | {"READY_FOR_DISPATCH"} and progress == 100
+        quality = "PASSED" if complete and latest.get("status") == "PASSED" else "IN_PROGRESS"
+        message = "Quality approved" if quality == "PASSED" else "Quality verification in progress"
         stages = build_stages(order.get("status", ""), progress)
     in_progress = [s["name"] for s in stages if s["state"] == "IN_PROGRESS"]
     return {

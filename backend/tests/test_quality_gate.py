@@ -453,7 +453,7 @@ def test_buyer_tracking_shows_only_safe_wording(manager, qc, public):
     held = public.get("/api/buyer/track/" + token)
     assert held.status_code == 200
     body = held.json()
-    assert body["qualityMessage"] == "Rework verification" and body["qualityStatus"] == "IN_REVIEW"
+    assert body["qualityMessage"] == "Quality verification in progress" and body["qualityStatus"] == "IN_PROGRESS"
     text = held.text.lower()
     assert not any(word in text for word in ("weft", "critical", "800", "qc@", "hold", "scrap", "inspector"))
     assert not any(any(w in key.lower() for w in FORBIDDEN) for key in body if key not in ("qualityStatus", "qualityMessage"))
@@ -468,7 +468,7 @@ def test_buyer_tracking_shows_only_safe_wording(manager, qc, public):
 def test_buyer_sees_quality_verification_while_a_stage_waits_for_its_inspection(manager, qc, public):
     oid = to_weaving_qc(manager, qc)
     body = public.get("/api/buyer/track/" + get_order(manager, oid)["trackingToken"]).json()
-    assert body["qualityMessage"] == "Quality verification in progress" and body["qualityStatus"] == "PENDING"
+    assert body["qualityMessage"] == "Quality verification in progress" and body["qualityStatus"] == "IN_PROGRESS"
 
 
 def test_passport_is_not_final_before_a_passed_final_inspection(manager, qc, public):

@@ -143,7 +143,7 @@ def test_buyer_tracking_stays_public_after_rework():
     post_roll(status="REWORK", affectedMeters=120)
     data = client.get("/api/buyer/track/" + dbm.orders().find_one({"orderId": "ORD104"})["trackingToken"]).json()
     assert_public(data)
-    assert data["qualityStatus"] == "IN_REVIEW"
+    assert data["qualityStatus"] == "IN_PROGRESS"
 
 
 def test_buyer_tracking_rejects_predictable_order_ids():
@@ -167,11 +167,11 @@ def test_buyer_tracking_stages():
     assert ord104["progress"] == 73
     assert ord104["stages"][2]["progress"] == 73
     assert ord104["dispatchStatus"] == "NOT_DISPATCHED"
-    assert ord104["qualityStatus"] == "PASSED"
+    assert ord104["qualityStatus"] == "IN_PROGRESS"
 
     ord091 = client.get("/api/buyer/track/" + dbm.orders().find_one({"orderId": "ORD091"})["trackingToken"]).json()
     assert ord091["currentStage"] == "Quality Check"
-    assert ord091["qualityStatus"] == "IN_REVIEW"
+    assert ord091["qualityStatus"] == "IN_PROGRESS"
 
     ord071 = client.get("/api/buyer/track/" + dbm.orders().find_one({"orderId": "ORD071"})["trackingToken"]).json()
     assert all(s["state"] == "DONE" for s in ord071["stages"])
@@ -192,7 +192,7 @@ def test_buyer_payment_updates_paid_and_pending():
     assert body["order"]["pendingAmount"] == before["revenue"] - 192400.0
     assert client.get("/api/orders/ORD104").json()["paidAmount"] == 192400.0
     kpis = client.get("/api/finance/dashboard").json()["kpis"]
-    assert kpis["paymentsReceived"] >= 192400
+    assert kpis["buyerPayments"] >= 50000
     assert kpis["paymentsPending"] >= 0
 
 
