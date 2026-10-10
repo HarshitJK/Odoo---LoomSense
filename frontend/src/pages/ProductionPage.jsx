@@ -1,9 +1,12 @@
 import { useState, useEffect } from "react";
-import { Activity, Pause, AlertOctagon, Gauge, Radio } from "lucide-react";
+import { Radio } from "lucide-react";
 
 import PageHeader from "../components/common/PageHeader.jsx";
 import ApiErrorBanner from "../components/common/ApiErrorBanner.jsx";
+import EmptyState from "../components/common/EmptyState.jsx";
+import LoadingBlock from "../components/common/LoadingBlock.jsx";
 import MockBadge from "../components/common/MockBadge.jsx";
+import Notice from "../components/common/Notice.jsx";
 import MachineCard from "../components/machines/MachineCard.jsx";
 import MachineDetailPanel from "../components/machines/MachineDetailPanel.jsx";
 
@@ -15,10 +18,8 @@ import { USE_MOCKS } from "../config.js";
 
 const TICK_INTERVAL_MS = 3000; // mock mode only: fake production tick every 3 seconds
 
-// ─── API → component shape normaliser ────────────────────────────────────────
 // The API sends `currentOrderId` and `runtimeToday` (hours); the machine components read
-// `orderId` and `runtimeHours`. Everything else (progress, costPerMeter, orderMachineCost,
-// estimatedCompletion, ...) is passed through unchanged.
+// `orderId` and `runtimeHours`. Everything else is passed through unchanged.
 function normaliseMachine(apiMachine) {
   return {
     ...apiMachine,
@@ -28,53 +29,25 @@ function normaliseMachine(apiMachine) {
   };
 }
 
-// ─── Summary strip ────────────────────────────────────────────────────────────
-
-function SummaryStrip({ machines }) {
-  const running     = machines.filter((m) => m.status === "RUNNING").length;
-  const idle        = machines.filter((m) => m.status === "IDLE").length;
-  const down        = machines.filter((m) => m.status === "DOWN").length;
-  const totalMetres = machines.reduce((sum, m) => sum + m.producedMeters, 0);
-
-  const stats = [
-    { label: "Running",          value: running,                                   colour: "text-green-600", bg: "bg-green-50", icon: Activity      },
-    { label: "Idle",             value: idle,                                      colour: "text-amber-600", bg: "bg-amber-50", icon: Pause         },
-    { label: "Down",             value: down,                                      colour: "text-red-600",   bg: "bg-red-50",   icon: AlertOctagon  },
-    { label: "Total Metres Today", value: `${Math.round(totalMetres).toLocaleString("en-IN")} m`,
-      colour: "text-blue-600", bg: "bg-blue-50", icon: Gauge },
-  ];
-
+/** One line: "3 running, 2 idle, 1 down". */
+function SummaryLine({ machines }) {
+  const count = (status) => machines.filter((m) => m.status === status).length;
   return (
-    <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-      {stats.map(({ label, value, colour, bg, icon: Icon }) => (
-        <div key={label} className={`rounded-xl ${bg} border border-slate-100 flex items-center gap-3 px-5 py-4`}>
-          <Icon className={`${colour} shrink-0`} size={22} />
-          <div>
-            <p className={`text-2xl font-bold ${colour}`}>{value}</p>
-            <p className="text-xs text-slate-500">{label}</p>
-          </div>
-        </div>
-      ))}
-    </div>
+    <p className="text-sm text-gray-900">
+      <span className="font-medium">{count("RUNNING")}</span> running, <span className="font-medium">{count("IDLE")}</span> idle,{" "}
+      <span className="font-medium">{count("DOWN")}</span> down
+    </p>
   );
 }
 
-/** Live / reconnecting indicator, simulator state and the latest factory event. */
-function LiveStatus({ connected, simulator, event }) {
+/** Live or reconnecting, as small text. */
+function LiveStatus({ connected }) {
   return (
-    <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
-      <span className={`inline-flex items-center gap-1.5 font-semibold ${connected ? "text-green-600" : "text-amber-600"}`}>
-        <Radio size={14} /> {connected ? "Live" : "Reconnecting…"}
-      </span>
-      {simulator && (
-        <span>Simulator {simulator.running ? `running at ${simulator.speed}x` : "stopped"}</span>
-      )}
-      {event && <span className="rounded bg-slate-100 px-2 py-0.5">{event.message}</span>}
-    </div>
+    <span className={`inline-flex items-center gap-1.5 text-sm ${connected ? "text-green-700" : "text-amber-700"}`}>
+      <Radio size={16} aria-hidden="true" /> {connected ? "Live" : "Reconnecting"}
+    </span>
   );
 }
-
-// ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function ProductionPage() {
   // Initial state from GET /api/machines, then live updates over WS /ws/machines
@@ -102,57 +75,37 @@ export default function ProductionPage() {
     return () => clearInterval(interval);
   }, [data]);
 
-  // Derive selected machine from live state so the panel stays up-to-date
+  // Derive the selected machine from live state so the panel stays up to date
   const selectedMachine = machines.find((m) => m.machineId === selectedId) ?? null;
 
   return (
-    <div className="space-y-6">
+    <>
       <PageHeader
-        title="Production Control Tower"
-        subtitle="Live machine status — updates every 3 seconds"
+        title="Machines"
+        subtitle="Which machines are running, and how far along each order is."
+        action={!USE_MOCKS && !error ? <LiveStatus connected={socket.connected} /> : undefined}
       />
       <MockBadge />
-
       <ApiErrorBanner error={error} onRetry={reload} />
 
-      {!USE_MOCKS && !error && (
-        <LiveStatus connected={socket.connected} simulator={socket.simulator} event={socket.event} />
-      )}
+      {socket.event?.message && <Notice tone="info">{socket.event.message}</Notice>}
 
-      {loading && !source && (
-        <div className="flex items-center justify-center h-64 text-slate-400 text-sm">Loading machines…</div>
-      )}
+      {loading && !source && <LoadingBlock label="Loading machines" height="h-40" />}
 
-      {!loading && !error && machines.length === 0 && (
-        <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-400">
-          No machines found. Run <code>python -m app.seed</code> in the backend.
-        </div>
-      )}
+      {!loading && !error && machines.length === 0 && <EmptyState>No machines yet. Ask your administrator to add them.</EmptyState>}
 
       {machines.length > 0 && (
         <>
-          <SummaryStrip machines={machines} />
-
-          {/* ── Machine card grid (1 / 2 / 3 columns) ── */}
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
+          <SummaryLine machines={machines} />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {machines.map((machine) => (
-              <MachineCard
-                key={machine.machineId}
-                machine={machine}
-                onClick={() => setSelectedId(machine.machineId)}
-              />
+              <MachineCard key={machine.machineId} machine={machine} onClick={() => setSelectedId(machine.machineId)} />
             ))}
           </div>
         </>
       )}
 
-      {/* ── Detail panel — live machine object from state ── */}
-      {selectedMachine && (
-        <MachineDetailPanel
-          machine={selectedMachine}
-          onClose={() => setSelectedId(null)}
-        />
-      )}
-    </div>
+      {selectedMachine && <MachineDetailPanel machine={selectedMachine} onClose={() => setSelectedId(null)} />}
+    </>
   );
 }
