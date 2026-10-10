@@ -81,6 +81,55 @@ python smoke_test.py        # against a running server (writes a few test record
 dashboard, then run `python -m app.seed` once against Atlas (locally with the Atlas URI) or call `POST /api/demo/reset`.
 Keep exactly one instance: the machine simulator and WebSocket connections live inside the process.
 
+## Run with Docker
+
+**Prerequisites:** Docker Desktop (or Docker Engine with Compose v2.24+). Nothing else: no Node, Python or MongoDB needed.
+
+```bash
+docker compose up --build
+```
+
+That starts MongoDB, loads the demo data (only if the database is empty), then the backend and the frontend. No `.env` file is needed.
+
+| What | URL |
+|---|---|
+| App | http://localhost:5173 |
+| API / docs | http://localhost:8000 · http://localhost:8000/docs |
+| MongoDB (Compass) | `mongodb://localhost:27017` |
+| Public pages | http://localhost:5173/passport/RL10092 · http://localhost:5173/track/ORD104 |
+
+Stop with `docker compose down` (data stays in the `mongo-data` volume; `down -v` deletes it).
+
+### Machine data: two modes
+- **Simulator mode (default).** The built-in simulator moves the seeded machines, so `/production` and the WebSocket update right after start.
+- **Feeder mode.** Shows "real machines send data to LoomSense": `backend/machine_feeder.py` replays `backend/sample_data/machine_readings.json` (30 readings; W04 goes DOWN, W01 finishes ORD104) to `POST /api/machines/{id}/readings`. The simulator must be off, otherwise both would move the same machines:
+  ```bash
+  SIMULATOR_AUTOSTART=false docker compose --profile feeder up --build
+  ```
+  (PowerShell: `$env:SIMULATOR_AUTOSTART="false"; docker compose --profile feeder up --build`, or put `SIMULATOR_AUTOSTART=false` in `.env`.) `FEEDER_DELAY_SECONDS` sets the pause between readings.
+
+### Resetting the demo data
+- `docker compose run --rm -e FORCE_SEED=true seed` reloads the demo data (the normal start never overwrites data entered by hand).
+- Or `curl -X POST http://localhost:8000/api/demo/reset -H "X-Admin-Key: change-me"` (uses `ADMIN_KEY`).
+
+### Phone on the same wifi (passports, buyer tracking)
+Use your computer's LAN IP everywhere the browser needs it. In `.env`:
+```
+VITE_API_URL=http://192.168.1.20:8000
+CORS_ORIGINS=http://192.168.1.20:5173
+PASSPORT_BASE_URL=http://192.168.1.20:5173
+```
+then `docker compose up --build` and open `http://192.168.1.20:5173` on the phone (allow ports 5173 and 8000 in the firewall).
+
+### MongoDB Atlas instead of the local database
+Set `MONGODB_URI=mongodb+srv://...` in `.env`, then `docker compose -f docker-compose.yml -f docker-compose.atlas.yml up --build`. The local mongo container is not started.
+
+### Troubleshooting
+- **Port already in use:** change `FRONTEND_PORT`, `BACKEND_PORT` or `MONGO_PORT` in `.env` (a local MongoDB on 27017 needs `MONGO_PORT=27018`). If you change `BACKEND_PORT`, also change `VITE_API_URL`, `CORS_ORIGINS` and `PASSPORT_BASE_URL` to match.
+- **CORS error in the browser console:** the address in the address bar must be listed in `CORS_ORIGINS` (scheme, host and port).
+- **Frontend still calls the old API address:** `VITE_API_URL` is baked in at build time. Run `docker compose up --build` (or `docker compose build frontend`) after changing it.
+- **Do not scale the backend:** the simulator and WebSockets live inside the process; run exactly one instance.
+
 ## Run the frontend
 
 ```bash
