@@ -4,7 +4,7 @@
  */
 export default function PublicPage({ children, action }) {
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-page">
       <div className="mx-auto w-full max-w-2xl space-y-6 px-4 py-6 sm:py-10">
         <div className="flex items-center justify-between gap-3">
           <span className="text-lg font-semibold text-gray-900">LoomSense</span>

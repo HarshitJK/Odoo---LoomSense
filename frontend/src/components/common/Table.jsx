@@ -15,7 +15,7 @@ export function Table({ children, caption }) {
 
 export function THead({ children }) {
   return (
-    <thead className="bg-gray-50">
+    <thead className="bg-blue-50">
       <tr>{children}</tr>
     </thead>
   );
@@ -24,7 +24,7 @@ export function THead({ children }) {
 /** align="right" for numbers. `hidden` keeps the header for screen readers only. */
 export function Th({ children, align = "left", hidden = false }) {
   return (
-    <th scope="col" className={`px-4 py-2.5 text-xs font-medium text-gray-500 ${align === "right" ? "text-right" : "text-left"}`}>
+    <th scope="col" className={`px-4 py-2.5 text-xs font-medium text-gray-600 ${align === "right" ? "text-right" : "text-left"}`}>
       {hidden ? <span className="sr-only">{children}</span> : children}
     </th>
   );
@@ -35,7 +35,7 @@ export function TBody({ children }) {
 }
 
 export function Tr({ children, className = "" }) {
-  return <tr className={`hover:bg-gray-50 ${className}`}>{children}</tr>;
+  return <tr className={`hover:bg-blue-50/60 ${className}`}>{children}</tr>;
 }
 
 /** `header` makes the cell the row header (first column, usually the order or worker name). */

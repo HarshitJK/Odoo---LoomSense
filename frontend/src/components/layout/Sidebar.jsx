@@ -38,7 +38,7 @@ export function NavLinks({ onNavigate, large = false }) {
     <nav aria-label="Main" className="space-y-5">
       {sectionsFor(user?.role).map((section) => (
         <div key={section.title}>
-          <p className="px-3 pb-1 text-xs font-medium text-gray-500">{section.title}</p>
+          <p className="px-3 pb-1 text-xs font-medium text-blue-200">{section.title}</p>
           <ul className="space-y-0.5">
             {section.items.map(({ to, label, icon: Icon }) => (
               <li key={to}>
@@ -48,7 +48,7 @@ export function NavLinks({ onNavigate, large = false }) {
                   onClick={onNavigate}
                   className={({ isActive }) =>
                     `flex items-center gap-3 rounded-md px-3 text-sm ${large ? "min-h-12" : "min-h-9"} ${
-                      isActive ? "bg-blue-50 font-medium text-blue-700" : "text-gray-700 hover:bg-gray-50"
+                      isActive ? "bg-blue-700 font-medium text-white" : "text-blue-100 hover:bg-blue-800"
                     }`
                   }
                 >
@@ -68,9 +68,9 @@ export function NavLinks({ onNavigate, large = false }) {
 export function AccountBox() {
   const { user, logout } = useAuth();
   return (
-    <div className="space-y-2 border-t border-gray-200 p-4 text-sm">
-      <p className="truncate text-gray-900">{user?.email}</p>
-      <p className="text-xs text-gray-500">{roleLabel(user?.role)}</p>
+    <div className="space-y-2 border-t border-blue-800 p-4 text-sm">
+      <p className="truncate text-white">{user?.email}</p>
+      <p className="text-xs text-blue-200">{roleLabel(user?.role)}</p>
       <Button onClick={logout} className="w-full">Sign out</Button>
     </div>
   );
@@ -78,8 +78,8 @@ export function AccountBox() {
 
 export default function Sidebar() {
   return (
-    <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-gray-200 bg-white md:flex">
-      <div className="px-6 py-5 text-lg font-semibold text-gray-900">LoomSense</div>
+    <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-blue-950 bg-blue-900 md:flex">
+      <div className="px-6 py-5 text-lg font-semibold text-white">LoomSense</div>
       <div className="flex-1 overflow-y-auto px-3 pb-4">
         <NavLinks />
       </div>
