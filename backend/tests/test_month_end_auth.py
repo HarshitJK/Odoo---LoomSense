@@ -70,7 +70,7 @@ def test_internal_routes_require_login(path):
 def test_roles_and_public_allowlists():
     manager, qc, public = login("PRODUCTION_MANAGER"), login("WORKER_QC"), TestClient(app)
     for c in (manager, qc):
-        for path in ("/api/finance/dashboard", "/api/workers", "/api/purchases", "/api/orders/ORD104/cost"):
+        for path in ("/api/finance/dashboard", "/api/workers/wages/summary", "/api/purchases", "/api/orders/ORD104/cost"):
             assert c.get(path).status_code == 403
         quality = c.get("/api/quality").json()
         assert all("reworkCost" not in q and "impact" not in q for q in quality)

@@ -74,7 +74,7 @@ step(1, f"Order readiness check for {ORDER} (Cotton, Navy Blue, 2,000 m)")
 order = api("GET", f"/api/orders/{ORDER}")
 check = api("POST", "/api/orders/readiness-check", {
     "quantityMeters": order["quantityMeters"], "colour": order["colour"],
-    "fabricType": order["fabricType"], "expectedRevenue": order["revenue"]})
+    "fabricType": order["fabricType"], "expectedRevenue": 350000})
 print(f"Required yarn {check['requiredYarnKg']:,.0f} kg | available {check['availableKg']:,.0f} kg"
       f" | shortage {check['shortageKg']:,.0f} kg")
 print(f"Status: {check['status'].replace('_', ' ')}")
@@ -175,7 +175,7 @@ print(f"{d['label']}: revenue {money(k['revenue'])} | production cost {money(k['
       f" | profit {money(k['netProfit'])} | margin {k['profitMargin']}% (target {d['targetMargin']:g}%)")
 print(f"  raw material {money(k['rawMaterialExpense'])} | machine {money(k['machineOperatingCost'])}"
       f" | rework {money(k['reworkCost'])} | worker wages {money(k['workerWages'])}")
-print(f"  payments received {money(k['paymentsReceived'])} | pending {money(k['paymentsPending'])}")
+print(f"  cash received from buyers this month {money(k['buyerPayments'])} | pending {money(k['paymentsPending'])}")
 best, worst = d["mostProfitableOrder"], d["leastProfitableOrder"]
 print(f"  most profitable {best['orderId']} ({best['margin']}%) | least profitable {worst['orderId']} ({worst['margin']}%)")
 

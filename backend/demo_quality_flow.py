@@ -12,6 +12,7 @@ carries on to final QC, the passport becomes final, and the owner sees what the 
 """
 import json
 import os
+from datetime import date
 import sys
 import urllib.error
 import urllib.request
@@ -23,7 +24,7 @@ sys.stdout.reconfigure(encoding="utf-8")
 
 BASE = sys.argv[1].rstrip("/") if len(sys.argv) > 1 else "http://localhost:8000"
 MACHINE = "W05"
-QUANTITY = 300
+QUANTITY = 2000
 results = []
 tokens = {}
 
@@ -90,13 +91,27 @@ for role, email, env in [("owner", "owner", "SEED_OWNER_PASSWORD"), ("manager", 
 check("QC worker cannot open the owner finance dashboard", call("qc", "GET", "/api/finance/dashboard")[0] == 403)
 check("production manager cannot open quality analytics", call("manager", "GET", "/api/quality/analytics")[0] == 403)
 
+# Fresh-order readiness: preserve the shortage demonstration, then receive demo stock.
+readiness = need(call("owner", "POST", "/api/orders/readiness-check", {
+    "quantityMeters": QUANTITY, "fabricType": "Cotton", "colour": "Navy Blue", "expectedRevenue": 350000}), "readiness checked")
+check("projected margin exceeds 25%", readiness["projectedMargin"] > 25)
+print(f"Required {readiness['requiredYarnKg']} kg; available {readiness['availableKg']} kg; shortage {readiness['shortageKg']} kg")
+stock = need(call("owner", "GET", "/api/inventory"), "read stock")
+batch = next(b for b in stock if b["batchId"] == "YB82")
+need(call("owner", "POST", "/api/purchases", {"supplier": "Supplier A", "invoiceNumber": "DEMO-" + str(__import__("time").time_ns()),
+    "batchId": "YB82", "material": "Cotton Yarn", "colour": "Navy Blue", "quantityKg": 1050,
+    "costPerKg": 180, "purchaseDate": date.today().isoformat()}), "receive demo yarn")
+
 # ------------------------------------------------------------------ 2 start the order
 heading("2. Production manager starts an order")
 created = need(call("manager", "POST", "/api/orders", {"buyerName": "Stage QC Demo Buyer", "fabricType": "Cotton",
-               "colour": "Navy Blue", "quantityMeters": QUANTITY, "revenue": 60000, "yarnBatch": "YB82"}), "order created")
+               "colour": "Navy Blue", "quantityMeters": QUANTITY, "revenue": 350000, "yarnBatch": "YB82"}), "order created")
 oid, token = created["orderId"], created["trackingToken"]
 check("order is gated and starts at RAW_MATERIAL", created["currentStage"] == "RAW_MATERIAL" and created["gated"], created)
 check("first-off is required, sample is 100 m", created["requiresFirstOffQc"] and created["sampleMeters"] == 100)
+need(call("manager", "POST", f"/api/orders/{oid}/reserve", {"batchId": "YB82", "quantityKg": 1180}), "reserve 1180 kg")
+need(call("manager", "POST", "/api/attendance", {"workerId": "EMP023", "orderId": oid, "machineId": MACHINE,
+    "hoursWorked": 8, "overtimeHours": 1}), "manager logs hours")
 need(call("manager", "PATCH", f"/api/machines/{MACHINE}", {"currentOrderId": oid, "status": "RUNNING", "productionRate": 100}),
      f"machine {MACHINE} assigned to {oid}")
 
