@@ -116,3 +116,47 @@ def test_websocket_sends_snapshot_on_connect():
     assert msg["type"] == "snapshot"
     assert len(msg["machines"]) == 6
     assert set(msg["machines"][0]) == VIEW_FIELDS
+
+
+# ---- POST /api/machines/{id}/readings ----
+
+def test_reading_updates_machine_order_costs_and_broadcasts():
+    got = []
+
+    async def listener(message):
+        got.append(message)
+
+    sim.add_listener(listener)
+    try:
+        before = client.get("/api/orders/ORD104").json()
+        res = client.post("/api/machines/W01/readings", json={
+            "temperature": 64.2, "productionRate": 110, "efficiency": 0.93, "producedMetersDelta": 25,
+            "timestamp": "2026-10-10T12:00:00"})
+    finally:
+        sim.listeners.remove(listener)
+    assert res.status_code == 200
+    body = res.json()
+    assert body["temperature"] == 64.2 and body["efficiency"] == 0.93
+    assert body["producedMeters"] == pytest.approx(1485)
+    after = client.get("/api/orders/ORD104").json()
+    assert after["producedMeters"] == pytest.approx(before["producedMeters"] + 25)
+    assert after["costs"]["machine"] > before["costs"]["machine"]  # costs recomputed
+    assert [m["type"] for m in got] == ["machine_update"]          # same message the simulator sends
+    assert {m["machineId"] for m in got[0]["machines"]} >= {"W01", "W06"}
+
+
+def test_reading_can_take_a_machine_down_and_finish_an_order():
+    res = client.post("/api/machines/W02/readings", json={"status": "DOWN"})
+    assert res.json()["status"] == "DOWN"
+    left = 2000 - 1460
+    res = client.post("/api/machines/W01/readings", json={"producedMetersDelta": left + 50})
+    assert res.json()["status"] == "IDLE" and res.json()["producedMeters"] == 2000
+    order = client.get("/api/orders/ORD104").json()
+    assert order["producedMeters"] == 2000 and order["status"] == "QUALITY_CHECK"
+
+
+def test_reading_validation():
+    assert client.post("/api/machines/NOPE/readings", json={"producedMetersDelta": 1}).status_code == 404
+    assert client.post("/api/machines/W01/readings", json={"producedMetersDelta": -5}).status_code == 422
+    assert client.post("/api/machines/W01/readings", json={"status": "BROKEN"}).status_code == 422
+    assert client.post("/api/machines/W01/readings", json={"efficiency": 3}).status_code == 422

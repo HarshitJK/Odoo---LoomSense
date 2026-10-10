@@ -120,6 +120,52 @@ def tick() -> tuple:
         return _tick()
 
 
+def _complete_order(order_id: str, machine_id: str) -> dict:
+    """Order reached its quantity: move it to QUALITY_CHECK, idle its machines, return the event."""
+    dbm.orders().update_one({"orderId": order_id}, {"$set": {"status": "QUALITY_CHECK"}})
+    # Machines keep currentOrderId so their cost stays attributed to the finished order
+    dbm.machines().update_many({"currentOrderId": order_id, "status": "RUNNING"}, {"$set": {"status": "IDLE"}})
+    return event_message(
+        "order_completed",
+        f"Order {order_id} finished production on {machine_id}. Ready for quality check.",
+        machine_id, order_id)
+
+
+def apply_reading(machine_id: str, reading: dict) -> tuple:
+    """Apply one reading sent by a real (or replayed) machine. Returns (events, machine views).
+
+    reading keys (all optional): temperature, productionRate, efficiency, producedMetersDelta, status.
+    Raises MachineNotFound.
+    """
+    with sim_lock:
+        m = dbm.machines().find_one({"machineId": machine_id}, NO_ID)
+        if not m:
+            raise MachineNotFound(f"Machine {machine_id} not found")
+        events = []
+        changes = {k: reading[k] for k in ("temperature", "productionRate", "efficiency", "status")
+                   if reading.get(k) is not None}
+        delta = reading.get("producedMetersDelta") or 0
+        order = dbm.orders().find_one({"orderId": m.get("currentOrderId")}, NO_ID) if m.get("currentOrderId") else None
+        finished = False
+        if delta and order:
+            room = max(order["quantityMeters"] - order["producedMeters"], 0)
+            step = min(delta, room)
+            changes["producedMeters"] = round(m.get("producedMeters", 0) + step, 2)
+            total = round(order["producedMeters"] + step, 2)
+            dbm.orders().update_one({"orderId": order["orderId"]}, {"$set": {"producedMeters": total}})
+            finished = step > 0 and total >= order["quantityMeters"]
+        if changes:
+            dbm.machines().update_one({"machineId": machine_id}, {"$set": changes})
+        if changes.get("status") == "DOWN":
+            events.append(event_message("machine_failure", f"Machine {machine_id} is DOWN.", machine_id,
+                                        m.get("currentOrderId")))
+        if finished:
+            events.append(_complete_order(order["orderId"], machine_id))
+        if order:
+            profitability.refresh_order(order["orderId"])
+        return events, get_snapshot()
+
+
 def _tick() -> tuple:
     events, touched = [], set()
     speed = state["speed"]
@@ -147,14 +193,7 @@ def _tick() -> tuple:
         dbm.machines().update_one({"machineId": machine_id}, {"$set": changes})
 
         if finished:
-            dbm.orders().update_one({"orderId": order["orderId"]}, {"$set": {"status": "QUALITY_CHECK"}})
-            # Machines keep currentOrderId so their cost stays attributed to the finished order
-            dbm.machines().update_many(
-                {"currentOrderId": order["orderId"], "status": "RUNNING"}, {"$set": {"status": "IDLE"}})
-            events.append(event_message(
-                "order_completed",
-                f"Order {order['orderId']} finished production on {machine_id}. Ready for quality check.",
-                machine_id, order["orderId"]))
+            events.append(_complete_order(order["orderId"], machine_id))
 
     for order_id in touched:
         profitability.refresh_order(order_id)

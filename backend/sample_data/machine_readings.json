@@ -1,0 +1,272 @@
+[
+ {
+  "machineId": "W01",
+  "status": "RUNNING",
+  "temperature": 61.3,
+  "productionRate": 112,
+  "efficiency": 0.9,
+  "producedMetersDelta": 110,
+  "timestamp": "2026-10-10T09:00:00"
+ },
+ {
+  "machineId": "W02",
+  "status": "RUNNING",
+  "temperature": 59.6,
+  "productionRate": 105,
+  "efficiency": 0.84,
+  "producedMetersDelta": 38,
+  "timestamp": "2026-10-10T09:01:00"
+ },
+ {
+  "machineId": "W03",
+  "status": "RUNNING",
+  "temperature": 66.7,
+  "productionRate": 84,
+  "efficiency": 0.74,
+  "producedMetersDelta": 0,
+  "timestamp": "2026-10-10T09:02:00"
+ },
+ {
+  "machineId": "W04",
+  "status": "RUNNING",
+  "temperature": 59.2,
+  "productionRate": 98,
+  "efficiency": 0.86,
+  "producedMetersDelta": 34,
+  "timestamp": "2026-10-10T09:03:00"
+ },
+ {
+  "machineId": "W05",
+  "status": "IDLE",
+  "temperature": 31.0,
+  "productionRate": 0,
+  "efficiency": 0.0,
+  "producedMetersDelta": 0,
+  "timestamp": "2026-10-10T09:04:00"
+ },
+ {
+  "machineId": "W06",
+  "status": "DOWN",
+  "temperature": 27.0,
+  "productionRate": 0,
+  "efficiency": 0.0,
+  "producedMetersDelta": 0,
+  "timestamp": "2026-10-10T09:05:00"
+ },
+ {
+  "machineId": "W01",
+  "status": "RUNNING",
+  "temperature": 60.1,
+  "productionRate": 112,
+  "efficiency": 0.91,
+  "producedMetersDelta": 110,
+  "timestamp": "2026-10-10T09:06:00"
+ },
+ {
+  "machineId": "W02",
+  "status": "RUNNING",
+  "temperature": 57.3,
+  "productionRate": 105,
+  "efficiency": 0.85,
+  "producedMetersDelta": 41,
+  "timestamp": "2026-10-10T09:07:00"
+ },
+ {
+  "machineId": "W03",
+  "status": "RUNNING",
+  "temperature": 66.1,
+  "productionRate": 84,
+  "efficiency": 0.76,
+  "producedMetersDelta": 0,
+  "timestamp": "2026-10-10T09:08:00"
+ },
+ {
+  "machineId": "W04",
+  "status": "RUNNING",
+  "temperature": 59.4,
+  "productionRate": 98,
+  "efficiency": 0.86,
+  "producedMetersDelta": 34,
+  "timestamp": "2026-10-10T09:09:00"
+ },
+ {
+  "machineId": "W05",
+  "status": "IDLE",
+  "temperature": 30.4,
+  "productionRate": 0,
+  "efficiency": 0.0,
+  "producedMetersDelta": 0,
+  "timestamp": "2026-10-10T09:10:00"
+ },
+ {
+  "machineId": "W06",
+  "status": "DOWN",
+  "temperature": 27.0,
+  "productionRate": 0,
+  "efficiency": 0.0,
+  "producedMetersDelta": 0,
+  "timestamp": "2026-10-10T09:11:00"
+ },
+ {
+  "machineId": "W01",
+  "status": "RUNNING",
+  "temperature": 62.5,
+  "productionRate": 112,
+  "efficiency": 0.94,
+  "producedMetersDelta": 110,
+  "timestamp": "2026-10-10T09:12:00"
+ },
+ {
+  "machineId": "W02",
+  "status": "RUNNING",
+  "temperature": 59.3,
+  "productionRate": 105,
+  "efficiency": 0.86,
+  "producedMetersDelta": 44,
+  "timestamp": "2026-10-10T09:13:00"
+ },
+ {
+  "machineId": "W03",
+  "status": "RUNNING",
+  "temperature": 68.9,
+  "productionRate": 84,
+  "efficiency": 0.72,
+  "producedMetersDelta": 0,
+  "timestamp": "2026-10-10T09:14:00"
+ },
+ {
+  "machineId": "W04",
+  "status": "DOWN",
+  "temperature": 31.5,
+  "productionRate": 0,
+  "efficiency": 0.0,
+  "producedMetersDelta": 0,
+  "timestamp": "2026-10-10T09:15:00"
+ },
+ {
+  "machineId": "W05",
+  "status": "IDLE",
+  "temperature": 31.7,
+  "productionRate": 0,
+  "efficiency": 0.0,
+  "producedMetersDelta": 0,
+  "timestamp": "2026-10-10T09:16:00"
+ },
+ {
+  "machineId": "W06",
+  "status": "DOWN",
+  "temperature": 27.0,
+  "productionRate": 0,
+  "efficiency": 0.0,
+  "producedMetersDelta": 0,
+  "timestamp": "2026-10-10T09:17:00"
+ },
+ {
+  "machineId": "W01",
+  "status": "RUNNING",
+  "temperature": 61.2,
+  "productionRate": 112,
+  "efficiency": 0.9,
+  "producedMetersDelta": 110,
+  "timestamp": "2026-10-10T09:18:00"
+ },
+ {
+  "machineId": "W02",
+  "status": "RUNNING",
+  "temperature": 57.5,
+  "productionRate": 105,
+  "efficiency": 0.86,
+  "producedMetersDelta": 47,
+  "timestamp": "2026-10-10T09:19:00"
+ },
+ {
+  "machineId": "W03",
+  "status": "RUNNING",
+  "temperature": 68.1,
+  "productionRate": 84,
+  "efficiency": 0.73,
+  "producedMetersDelta": 0,
+  "timestamp": "2026-10-10T09:20:00"
+ },
+ {
+  "machineId": "W04",
+  "status": "DOWN",
+  "temperature": 25.4,
+  "productionRate": 0,
+  "efficiency": 0.0,
+  "producedMetersDelta": 0,
+  "timestamp": "2026-10-10T09:21:00"
+ },
+ {
+  "machineId": "W05",
+  "status": "IDLE",
+  "temperature": 31.2,
+  "productionRate": 0,
+  "efficiency": 0.0,
+  "producedMetersDelta": 0,
+  "timestamp": "2026-10-10T09:22:00"
+ },
+ {
+  "machineId": "W06",
+  "status": "DOWN",
+  "temperature": 27.0,
+  "productionRate": 0,
+  "efficiency": 0.0,
+  "producedMetersDelta": 0,
+  "timestamp": "2026-10-10T09:23:00"
+ },
+ {
+  "machineId": "W01",
+  "status": "RUNNING",
+  "temperature": 62.6,
+  "productionRate": 112,
+  "efficiency": 0.91,
+  "producedMetersDelta": 110,
+  "timestamp": "2026-10-10T09:24:00"
+ },
+ {
+  "machineId": "W02",
+  "status": "RUNNING",
+  "temperature": 59.2,
+  "productionRate": 105,
+  "efficiency": 0.84,
+  "producedMetersDelta": 50,
+  "timestamp": "2026-10-10T09:25:00"
+ },
+ {
+  "machineId": "W03",
+  "status": "RUNNING",
+  "temperature": 64.3,
+  "productionRate": 84,
+  "efficiency": 0.73,
+  "producedMetersDelta": 0,
+  "timestamp": "2026-10-10T09:26:00"
+ },
+ {
+  "machineId": "W04",
+  "status": "DOWN",
+  "temperature": 24.4,
+  "productionRate": 0,
+  "efficiency": 0.0,
+  "producedMetersDelta": 0,
+  "timestamp": "2026-10-10T09:27:00"
+ },
+ {
+  "machineId": "W05",
+  "status": "IDLE",
+  "temperature": 31.4,
+  "productionRate": 0,
+  "efficiency": 0.0,
+  "producedMetersDelta": 0,
+  "timestamp": "2026-10-10T09:28:00"
+ },
+ {
+  "machineId": "W06",
+  "status": "DOWN",
+  "temperature": 27.0,
+  "productionRate": 0,
+  "efficiency": 0.0,
+  "producedMetersDelta": 0,
+  "timestamp": "2026-10-10T09:29:00"
+ }
+]

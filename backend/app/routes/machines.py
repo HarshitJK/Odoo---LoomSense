@@ -1,7 +1,9 @@
+import asyncio
+
 from fastapi import APIRouter, HTTPException
 
 from app import database as dbm
-from app.models.machine import MachineUpdate, SimulateRequest
+from app.models.machine import MachineReading, MachineUpdate, SimulateRequest
 from app.services import machine_simulator as simulator
 from app.services import profitability
 
@@ -23,6 +25,20 @@ async def simulate(body: SimulateRequest):
         raise HTTPException(404, str(e))
     except ValueError as e:
         raise HTTPException(409, str(e))
+
+
+@router.post("/{machine_id}/readings")
+async def machine_reading(machine_id: str, body: MachineReading):
+    """A machine (or the sample feeder) reports its state: updates the machine and its order, then broadcasts."""
+    try:
+        events, views = await asyncio.to_thread(
+            simulator.apply_reading, machine_id, body.model_dump(exclude={"timestamp"}))
+    except simulator.MachineNotFound as e:
+        raise HTTPException(404, str(e))
+    for event in events:
+        await simulator.emit(event)
+    await simulator.emit(simulator.update_message(views))
+    return next(v for v in views if v["machineId"] == machine_id)
 
 
 @router.get("/{machine_id}")

@@ -18,6 +18,7 @@ Errors are always `{"detail": "message"}`: 404 not found, 409 already exists / n
 | POST | `/api/orders/readiness-check` | Same for a new order: `{quantityMeters, colour, fabricType, expectedRevenue}` |
 | GET | `/api/machines`, `/api/machines/{id}` | Live machine object (below) |
 | PATCH | `/api/machines/{id}` | `status` (`RUNNING`/`IDLE`/`DOWN`), `currentOrderId`, `productionRate` |
+| POST | `/api/machines/{id}/readings` | A machine reports `{temperature, productionRate, efficiency, producedMetersDelta, status?, timestamp?}`. Updates the machine and its order's `producedMeters` (finishing the order moves it to `QUALITY_CHECK`), recomputes costs and broadcasts the usual `machine_update` over the WebSocket. 404 unknown machine, 422 bad values. Used by `backend/machine_feeder.py` |
 | POST | `/api/machines/simulate` | `{action: start\|stop\|reset\|failure, machineId?, speed?}` (speed 0–100) |
 | GET / POST | `/api/inventory` | Items carry `lowStock` (under 300 kg). POST needs `batchId` |
 | PATCH | `/api/inventory/{batchId}` | `material, colour, quantityKg, costPerKg, supplier` |
