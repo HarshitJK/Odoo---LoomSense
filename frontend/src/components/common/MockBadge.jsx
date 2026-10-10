@@ -1,11 +1,7 @@
 import { USE_MOCKS } from "../../config.js";
 
-/** Small badge shown on a page while VITE_USE_MOCKS=true is active. */
+/** Shown only while VITE_USE_MOCKS=true. */
 export default function MockBadge() {
   if (!USE_MOCKS) return null;
-  return (
-    <span className="inline-block rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-800">
-      Using mock data
-    </span>
-  );
+  return <span className="inline-block rounded-md bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">Sample data</span>;
 }
