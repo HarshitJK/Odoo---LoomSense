@@ -15,7 +15,7 @@ export default function OrderReadinessChecker() {
   const [fabricType, setFabricType] = useState("Cotton");
   const [colour, setColour] = useState("Navy Blue");
   const [metres, setMetres] = useState("2000");
-  const [revenue, setRevenue] = useState("356000");
+  const [revenue, setRevenue] = useState("350000");
 
   const [result, setResult] = useState(null); // null = not checked yet
   const [error, setError] = useState("");
@@ -61,7 +61,7 @@ export default function OrderReadinessChecker() {
             <Input id="input-metres" required type="number" min="1" value={metres} onChange={clear(setMetres)} />
           </FormField>
           <FormField label="Expected revenue (₹)" required>
-            <Input id="input-revenue" required type="number" min="0" value={revenue} onChange={clear(setRevenue)} />
+            <Input id="input-revenue" placeholder="350000" required type="number" min="0" value={revenue} onChange={clear(setRevenue)} />
           </FormField>
         </div>
 
