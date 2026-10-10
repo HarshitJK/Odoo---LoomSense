@@ -59,10 +59,10 @@ export default function TrackSearchCard({ initialValue = "" }) {
           <span className="mx-1">·</span>
           <button
             type="button"
-            onClick={() => navigate("/track/ORD098")}
+            onClick={() => navigate("/track/ORD071")}
             className="text-blue-600 hover:underline font-mono font-medium cursor-pointer"
           >
-            ORD098
+            ORD071
           </button>
           <span className="mx-1">·</span>
           <button

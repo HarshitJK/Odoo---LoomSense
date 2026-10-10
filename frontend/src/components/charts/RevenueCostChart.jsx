@@ -30,13 +30,13 @@ function CustomTooltip({ active, payload, label }) {
  * per month. Profit is computed as revenue − cost inside this component.
  *
  * Props:
- *   data — array of { month, revenue, cost }  (from mocks/finance.js monthlyTrend)
+ *   data — array of { label, revenue, cost, profit } (GET /api/finance/monthly)
  */
 export default function RevenueCostChart({ data }) {
   // Add a "profit" field to each month for the third bar
   const chartData = data.map((d) => ({
     ...d,
-    profit: d.revenue - d.cost,
+    profit: d.profit ?? d.revenue - d.cost,
   }));
 
   return (
@@ -47,7 +47,7 @@ export default function RevenueCostChart({ data }) {
       <ResponsiveContainer width="100%" height={260}>
         <BarChart data={chartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-          <XAxis dataKey="month" tick={{ fontSize: 13, fill: "#64748b" }} />
+          <XAxis dataKey="label" tick={{ fontSize: 13, fill: "#64748b" }} />
           <YAxis
             tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`}
             tick={{ fontSize: 12, fill: "#64748b" }}

@@ -29,9 +29,15 @@ export default function useApi(path, { params, mock, enabled = true, transform }
   const latest = useRef({ mock, transform });
   latest.current = { mock, transform };
   const paramsKey = JSON.stringify(params ?? {});
+  const requestKey = `${path}?${paramsKey}`;
+  const lastKey = useRef(requestKey);
 
   useEffect(() => {
     if (!enabled) return undefined;
+    if (lastKey.current !== requestKey) {
+      lastKey.current = requestKey; // a different request: drop the previous answer
+      setState({ data: null, loading: true, error: null });
+    }
     if (USE_MOCKS) {
       const { mock: m } = latest.current;
       setState({ data: typeof m === "function" ? m() : m ?? null, loading: false, error: null });
@@ -52,7 +58,7 @@ export default function useApi(path, { params, mock, enabled = true, transform }
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [path, paramsKey, enabled, attempt]);
+  }, [requestKey, enabled, attempt]);
 
   const reload = useCallback(() => setAttempt((n) => n + 1), []);
   return { ...state, reload, usingMocks: USE_MOCKS };

@@ -22,15 +22,6 @@ export function normaliseRoll(apiRoll) {
 export const normaliseRolls = (apiRolls) => apiRolls.map(normaliseRoll);
 
 /**
- * Fetch a single fabric roll by ID (internal view, includes cost fields).
- * The public passport page uses fetchPassport in api/passport.js instead.
- */
-export async function fetchRollById(rollId) {
-  const res = await client.get(`/api/quality/${rollId}`);
-  return normaliseRoll(res.data);
-}
-
-/**
  * Submit a quality inspection roll.
  * Body: { orderId, machineId, yarnBatch, shift?, status, defects[], affectedMeters, reworkStatus?, rollId? }
  * Returns { roll, impact, marginBefore, marginAfter } straight from the server; `impact` is

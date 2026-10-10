@@ -89,11 +89,7 @@ export default function OrderSummaryCard({ order, onTrackAnother }) {
 
       {/* Vertical Timeline */}
       <div className="pt-2 border-t border-slate-100">
-        <TrackingTimeline
-          stages={order.stages}
-          currentStage={order.currentStage}
-          progress={order.progress}
-        />
+        <TrackingTimeline stages={order.stages} />
       </div>
 
       {/* Footer Navigation */}

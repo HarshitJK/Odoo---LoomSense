@@ -1,15 +1,42 @@
 import { useParams, useNavigate } from "react-router-dom";
-import { getTrackingByOrderId } from "../mocks/buyerTracking.js";
+import useApi from "../hooks/useApi.js";
+import ApiErrorBanner from "../components/common/ApiErrorBanner.jsx";
+import MockBadge from "../components/common/MockBadge.jsx";
 import TrackSearchCard from "../components/buyer/TrackSearchCard.jsx";
 import OrderSummaryCard from "../components/buyer/OrderSummaryCard.jsx";
-import { SearchX, ArrowLeft } from "lucide-react";
+import { SearchX, ArrowLeft, Loader2 } from "lucide-react";
+
+// Only used when VITE_USE_MOCKS=true: the mock has plain stage names, the API has { name, state }
+import { getTrackingByOrderId } from "../mocks/buyerTracking.js";
+
+function mockTracking(orderId) {
+  const order = getTrackingByOrderId(orderId);
+  if (!order) return null;
+  const current = order.stages.indexOf(order.currentStage);
+  return {
+    ...order,
+    stages: order.stages.map((name, i) => ({
+      name,
+      state: i < current ? "DONE" : i === current ? "IN_PROGRESS" : "PENDING",
+      ...(i === current && { progress: order.progress }),
+    })),
+  };
+}
 
 export default function BuyerTrackingPage() {
   const { orderId } = useParams();
   const navigate = useNavigate();
 
+  const isSearch = !orderId || orderId.toLowerCase() === "search";
+
+  // Public, buyer-safe endpoint: GET /api/buyer/track/{orderId} (ORD104 and ORD-104 both work)
+  const { data: order, loading, error, reload } = useApi(
+    `/api/buyer/track/${encodeURIComponent(orderId ?? "")}`,
+    { enabled: !isSearch, mock: () => mockTracking(orderId) }
+  );
+
   // 1. Search Screen: Shown when no orderId param is present or when accessing /track/search
-  if (!orderId || orderId.toLowerCase() === "search") {
+  if (isSearch) {
     return (
       <div className="min-h-screen bg-slate-100 py-10 px-4 flex flex-col items-center justify-center">
         <TrackSearchCard />
@@ -17,10 +44,27 @@ export default function BuyerTrackingPage() {
     );
   }
 
-  // 2. Look up the order (case-insensitive and hyphen-tolerant)
-  const order = getTrackingByOrderId(orderId);
+  // 2. Loading
+  if (loading && !order && !error) {
+    return (
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+        <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+      </div>
+    );
+  }
 
-  // 3. Not Found Screen
+  // 3. Server or network problem (not a 404): show the error with Retry
+  if (error && error.status !== 404) {
+    return (
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+        <div className="w-full max-w-md">
+          <ApiErrorBanner error={error} onRetry={reload} />
+        </div>
+      </div>
+    );
+  }
+
+  // 4. Not Found Screen
   if (!order) {
     return (
       <div className="min-h-screen bg-slate-100 py-10 px-4 flex flex-col items-center justify-center">
@@ -54,9 +98,10 @@ export default function BuyerTrackingPage() {
     );
   }
 
-  // 4. Order Tracking Result Screen
+  // 5. Order Tracking Result Screen
   return (
-    <div className="min-h-screen bg-slate-100 py-8 px-4 flex flex-col items-center justify-center">
+    <div className="min-h-screen bg-slate-100 py-8 px-4 flex flex-col items-center justify-center gap-3">
+      <MockBadge />
       <OrderSummaryCard
         order={order}
         onTrackAnother={() => navigate("/track")}

@@ -168,9 +168,8 @@ export default function InventoryPage() {
       {/* ── Stock table — live from GET /api/inventory ── */}
       <StockTable batches={inventory} />
 
-      {/* ── Readiness checker — passes live inventory as prop ── */}
-      {/* The Lead can later replace this prop with data from GET /api/orders/{id}/readiness */}
-      <OrderReadinessChecker inventory={inventory} />
+      {/* ── Readiness checker — POST /api/orders/readiness-check ── */}
+      <OrderReadinessChecker />
       </>)}
     </div>
   );

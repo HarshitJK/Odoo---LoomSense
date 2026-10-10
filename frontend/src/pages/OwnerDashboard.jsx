@@ -8,9 +8,8 @@ import CostBreakdownChart from "../components/charts/CostBreakdownChart.jsx";
 import OrderProfitTable from "../components/orders/OrderProfitTable.jsx";
 import ProfitLeakagePanel from "../components/orders/ProfitLeakagePanel.jsx";
 
-// Finance KPIs and leakage — NOT yet in the API (/api/finance/* is placeholder).
-// Keep using mock data until the Lead implements the finance endpoints.
-import { monthlySummary, monthlyTrend, profitLeakage } from "../mocks/finance.js";
+// Only used when VITE_USE_MOCKS=true
+import { monthlySummary as mockSummary, monthlyTrend as mockTrend, profitLeakage as mockLeakage } from "../mocks/finance.js";
 // Only used when VITE_USE_MOCKS=true
 import { orders as mockOrders } from "../mocks/orders.js";
 import useApi from "../hooks/useApi.js";
@@ -83,61 +82,86 @@ function HighlightOrderCard({ order, label, borderColour }) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
+// Mock data in the API's shape (used only when VITE_USE_MOCKS=true)
+const mockDashboard = () => ({
+  label: "October 2026",
+  targetMargin: 25,
+  kpis: { revenue: mockSummary.revenue, productionCost: mockSummary.totalCost, netProfit: mockSummary.profit, profitMargin: mockSummary.margin },
+  costBreakdown: mockSummary.breakdown,
+  mostProfitableOrder: null,
+  leastProfitableOrder: null,
+});
+const mockMonthly = () => mockTrend.map((m) => ({ ...m, label: m.month, profit: m.revenue - m.cost }));
+
+/** % change of the latest month against the one before it (undefined when there is no earlier month). */
+function trendOf(monthly, key) {
+  if (!monthly || monthly.length < 2) return undefined;
+  const [prev, last] = monthly.slice(-2).map((m) => m[key]);
+  return prev ? Math.round(((last - prev) / Math.abs(prev)) * 1000) / 10 : undefined;
+}
+
 export default function OwnerDashboard() {
-  // Orders come from the real API: GET /api/orders
-  const { data, loading, error, reload } = useApi("/api/orders", { mock: mockOrders });
-  const orders = data ?? [];
+  // Everything below comes from the API (see docs/api.md)
+  const dashboard = useApi("/api/finance/dashboard", { mock: mockDashboard }); // KPIs, cost breakdown, best / worst order
+  const monthly   = useApi("/api/finance/monthly", { mock: mockMonthly });     // revenue vs cost chart
+  const leakage   = useApi("/api/finance/profit-leakage", { mock: mockLeakage }); // profit leakage panel
+  const orders    = useApi("/api/orders", { mock: mockOrders });               // profit table
 
-  // Only orders that have real profit data (exclude pending / null profit)
-  const completedOrders = orders.filter((o) => o.profit !== null && o.profit !== undefined);
-  const sortedByProfit  = [...completedOrders].sort((a, b) => b.profit - a.profit);
-  const mostProfitable  = sortedByProfit[0];
-  const leastProfitable = sortedByProfit[sortedByProfit.length - 1];
+  const all = [dashboard, monthly, leakage, orders];
+  const error = all.map((r) => r.error).find(Boolean);
+  const reloadAll = () => all.forEach((r) => r.reload());
+  const loading = all.some((r) => r.loading && !r.data) && !error;
 
-  // Finance summary — stays on mock until /api/finance/* is implemented
-  const { revenue, totalCost, profit, margin, breakdown } = monthlySummary;
+  const d = dashboard.data;
+  const kpis = d?.kpis;
+  const mostProfitable = d?.mostProfitableOrder;
+  const leastProfitable = d?.leastProfitableOrder;
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Owner Control Center"
-        subtitle="Profitability and cost intelligence — October 2026"
+        subtitle={`Profitability and cost intelligence${d ? ` — ${d.label}` : ""}`}
       />
 
       <MockBadge />
-      <ApiErrorBanner error={error} onRetry={reload} />
-      {loading && !data && (
-        <div className="flex items-center justify-center h-32 text-slate-400 text-sm">Loading orders…</div>
+      <ApiErrorBanner error={error} onRetry={reloadAll} />
+      {loading && (
+        <div className="flex items-center justify-center h-32 text-slate-400 text-sm">Loading finance data…</div>
       )}
 
-      {/* ── KPI row ── */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <KpiCard title="Monthly Revenue"  value={formatCurrency(revenue)}   subtitle="October 2026"            icon={DollarSign}  iconColour="text-blue-500"  trend={7.0}  />
-        <KpiCard title="Total Cost"       value={formatCurrency(totalCost)} subtitle="All production costs"    icon={TrendingDown} iconColour="text-amber-500" trend={5.6}  />
-        <KpiCard title="Net Profit"       value={formatCurrency(profit)}    subtitle={`Margin: ${margin}%`}    icon={TrendingUp}  iconColour="text-green-500" trend={11.5} />
-        <KpiCard title="Profit Margin"    value={`${margin}%`}              subtitle="Target: 25%"             icon={Percent}     iconColour={margin >= 25 ? "text-green-500" : "text-amber-500"} />
-      </div>
+      {/* ── KPI row — GET /api/finance/dashboard ── */}
+      {d && (
+        <>
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <KpiCard title="Monthly Revenue" value={formatCurrency(kpis.revenue)}        subtitle={d.label}                        icon={DollarSign}  iconColour="text-blue-500"  trend={trendOf(monthly.data, "revenue")} />
+            <KpiCard title="Total Cost"      value={formatCurrency(kpis.productionCost)} subtitle="All production costs"           icon={TrendingDown} iconColour="text-amber-500" trend={trendOf(monthly.data, "cost")} />
+            <KpiCard title="Net Profit"      value={formatCurrency(kpis.netProfit)}      subtitle={`Margin: ${kpis.profitMargin}%`} icon={TrendingUp}  iconColour="text-green-500" trend={trendOf(monthly.data, "profit")} />
+            <KpiCard title="Profit Margin"   value={`${kpis.profitMargin}%`}             subtitle={`Target: ${d.targetMargin}%`}   icon={Percent}     iconColour={kpis.profitMargin >= d.targetMargin ? "text-green-500" : "text-amber-500"} />
+          </div>
 
-      {/* Note: Finance KPIs above still use mock data — /api/finance/* not yet implemented */}
-
-      {/* ── Cost breakdown row ── */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <SmallCostCard label="Raw Material" amount={breakdown.rawMaterial} colour="text-blue-700"   />
-        <SmallCostCard label="Labour Wages" amount={breakdown.labour}      colour="text-violet-700" />
-        <SmallCostCard label="Machine Cost" amount={breakdown.machine}     colour="text-slate-700"  />
-        <SmallCostCard label="Rework Cost"  amount={breakdown.rework}      colour="text-red-600"    />
-      </div>
+          {/* ── Cost breakdown row ── */}
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <SmallCostCard label="Raw Material" amount={d.costBreakdown.rawMaterial} colour="text-blue-700"   />
+            <SmallCostCard label="Labour Wages" amount={d.costBreakdown.labour}      colour="text-violet-700" />
+            <SmallCostCard label="Machine Cost" amount={d.costBreakdown.machine}     colour="text-slate-700"  />
+            <SmallCostCard label="Rework Cost"  amount={d.costBreakdown.rework}      colour="text-red-600"    />
+          </div>
+        </>
+      )}
 
       {/* ── Charts row ── */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <RevenueCostChart data={monthlyTrend} />
-        <CostBreakdownChart breakdown={breakdown} />
-      </div>
+      {(monthly.data || d) && (
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          {monthly.data && <RevenueCostChart data={monthly.data} />}
+          {d && <CostBreakdownChart breakdown={d.costBreakdown} />}
+        </div>
+      )}
 
       {/* ── Order profit table — live from GET /api/orders ── */}
-      {data && <OrderProfitTable orders={orders} />}
+      {orders.data && <OrderProfitTable orders={orders.data} />}
 
-      {/* ── Highlight cards — derived from API data ── */}
+      {/* ── Highlight cards — most / least profitable finished orders from the dashboard ── */}
       {mostProfitable && leastProfitable && (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <HighlightOrderCard order={mostProfitable}  label="🏆 Most Profitable Order"  borderColour="border-green-500" />
@@ -145,8 +169,8 @@ export default function OwnerDashboard() {
         </div>
       )}
 
-      {/* ── Profit Leakage Panel — still uses mock until /api/finance/profit-leakage is ready ── */}
-      <ProfitLeakagePanel leakage={profitLeakage} />
+      {/* ── Profit Leakage Panel — GET /api/finance/profit-leakage ── */}
+      {leakage.data && <ProfitLeakagePanel leakage={leakage.data} />}
     </div>
   );
 }

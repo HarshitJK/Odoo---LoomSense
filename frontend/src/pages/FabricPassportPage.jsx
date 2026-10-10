@@ -1,11 +1,12 @@
-import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
 
-// ── API (GET /api/quality/{roll_id}) ──────────────────────────────────────
-import { fetchRollById } from "../api/quality.js";
+import useApi from "../hooks/useApi.js";
+import { normalisePassport } from "../api/passport.js";
+import ApiErrorBanner from "../components/common/ApiErrorBanner.jsx";
+import MockBadge from "../components/common/MockBadge.jsx";
 
-// ── Mock fallback ─────────────────────────────────────────────────────────
+// Only used when VITE_USE_MOCKS=true
 import { getRollById as getRollFromMock } from "../mocks/quality.js";
 
 import StatusBadge from "../components/quality/StatusBadge.jsx";
@@ -31,43 +32,13 @@ function formatProductionDate(dateStr) {
 
 export default function FabricPassportPage() {
   const { rollId } = useParams();
-  const [roll, setRoll] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [notFound, setNotFound] = useState(false);
 
-  useEffect(() => {
-    if (!rollId) {
-      setNotFound(true);
-      setLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    setLoading(true);
-    setNotFound(false);
-
-    fetchRollById(rollId)
-      .then((apiRoll) => {
-        if (cancelled) return;
-        setRoll(apiRoll);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        // 404 = not in backend → try mock fallback
-        const mockRoll = getRollFromMock(rollId);
-        if (mockRoll) {
-          setRoll(mockRoll);
-        } else {
-          // Not found anywhere
-          setNotFound(true);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => { cancelled = true; };
-  }, [rollId]);
+  // Public endpoint: GET /api/passport/{rollId} (passport fields only, no costs)
+  const { data: roll, loading, error, reload } = useApi(`/api/passport/${encodeURIComponent(rollId)}`, {
+    transform: normalisePassport,
+    mock: () => getRollFromMock(rollId),
+  });
+  const notFound = error?.status === 404 || (!loading && !error && !roll);
 
   // Loading state
   if (loading) {
@@ -76,6 +47,17 @@ export default function FabricPassportPage() {
         <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-slate-200 p-8 text-center">
           <Loader2 className="w-8 h-8 text-blue-600 animate-spin mx-auto mb-3" />
           <p className="text-sm text-slate-500">Loading fabric passport…</p>
+        </div>
+      </div>
+    );
+  }
+
+  // The server is unreachable or failed (not a 404): show the error, not "Roll Not Found"
+  if (error && !notFound) {
+    return (
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+        <div className="w-full max-w-md">
+          <ApiErrorBanner error={error} onRetry={reload} />
         </div>
       </div>
     );
@@ -118,6 +100,7 @@ export default function FabricPassportPage() {
     <div className="min-h-screen bg-slate-100 py-6 px-4 flex flex-col items-center justify-center">
       {/* Mobile-First Passport Card (Max width 375px–448px) */}
       <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-6">
+        <MockBadge />
         {/* Header / Brand */}
         <div className="flex items-center justify-between border-b border-slate-100 pb-4">
           <div>

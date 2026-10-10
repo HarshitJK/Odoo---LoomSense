@@ -1,14 +1,10 @@
 import { Check, CircleDot, Circle } from "lucide-react";
 
-export default function TrackingTimeline({
-  stages = [],
-  currentStage = "",
-  progress = 0,
-}) {
-  const currentIndex = stages.findIndex(
-    (s) => s.toLowerCase() === (currentStage || "").toLowerCase()
-  );
-
+/**
+ * stages: [{ name, state: "DONE" | "IN_PROGRESS" | "PENDING", progress? }] from GET /api/buyer/track/{id}.
+ * Only the Weaving stage carries its own `progress`; other in-progress stages show no percentage.
+ */
+export default function TrackingTimeline({ stages = [] }) {
   return (
     <div className="py-2">
       <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-4">
@@ -16,18 +12,10 @@ export default function TrackingTimeline({
       </h3>
 
       <div className="relative pl-6 space-y-6 before:absolute before:left-[11px] before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200">
-        {stages.map((stage, idx) => {
-          let state = "pending"; // 'done' | 'in_progress' | 'pending'
-
-          if (currentIndex !== -1) {
-            if (idx < currentIndex) {
-              state = "done";
-            } else if (idx === currentIndex) {
-              state = "in_progress";
-            } else {
-              state = "pending";
-            }
-          }
+        {stages.map((stageItem, idx) => {
+          const stage = stageItem.name;
+          const state = { DONE: "done", IN_PROGRESS: "in_progress" }[stageItem.state] ?? "pending";
+          const progress = stageItem.progress;
 
           return (
             <div key={stage} className="relative flex items-start gap-3">
@@ -68,7 +56,7 @@ export default function TrackingTimeline({
                   </span>
 
                   {/* Show progress % badge next to the current stage */}
-                  {state === "in_progress" && (
+                  {state === "in_progress" && progress != null && (
                     <span className="inline-flex items-center text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">
                       {progress}%
                     </span>
@@ -77,7 +65,7 @@ export default function TrackingTimeline({
 
                 <p className="text-[11px] text-slate-400 mt-0.5">
                   {state === "done" && "Completed and verified"}
-                  {state === "in_progress" && `Currently running at ${progress}%`}
+                  {state === "in_progress" && (progress != null ? `Currently running at ${progress}%` : "In progress")}
                   {state === "pending" && "Upcoming stage"}
                 </p>
               </div>
