@@ -5,7 +5,7 @@
 export const inventory = [
   {
     // The key batch — Cotton Navy Blue for ORD104
-    // 1,180 kg required × ₹70/kg = ₹82,600 ≈ ORD104 rawMaterial cost ✓
+    // 1,180 kg required × ₹70/kg = ₹82,600 ≈ ORD104 rawMaterial cost
     batchId: "YB82",
     material: "Cotton Yarn",
     colour: "Navy Blue",

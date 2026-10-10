@@ -1,9 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Html5Qrcode } from "html5-qrcode";
-import { AlertCircle, ArrowLeft, Camera, CameraOff, CheckCircle2, ImageUp, ScanLine, Search } from "lucide-react";
+import { Camera, CameraOff, ImageUp } from "lucide-react";
 
 import client from "../api/client.js";
+import Button, { buttonClass } from "../components/common/Button.jsx";
+import Notice from "../components/common/Notice.jsx";
+import PageHeader from "../components/common/PageHeader.jsx";
+import PublicPage from "../components/common/PublicPage.jsx";
+import { Input } from "../components/common/FormField.jsx";
 import { parseScan, routeFor } from "../utils/parseScan.js";
 
 const READER_ID = "qr-reader";
@@ -17,18 +22,18 @@ const cameraSupported = () =>
 function cameraErrorMessage(err) {
   const text = `${err?.name ?? ""} ${err?.message ?? err ?? ""}`;
   if (/NotAllowed|Permission|denied/i.test(text)) {
-    return "Camera permission was denied. Allow camera access for this site in your browser settings, then tap Start camera again.";
+    return "Camera access was blocked. Allow the camera for this site in your browser settings, then tap Start camera.";
   }
   if (/NotFound|DevicesNotFound|No camera|Requested device not found|OverconstrainedError/i.test(text)) {
-    return "No camera was found on this device. Use “Scan from image” or type the roll id below.";
+    return "No camera found on this device. Scan from a photo or type the code below.";
   }
   if (/NotReadable|TrackStart|in use|Could not start video source/i.test(text)) {
-    return "The camera is being used by another app. Close it and tap Start camera again.";
+    return "Another app is using the camera. Close it and tap Start camera.";
   }
   if (/SecurityError|insecure/i.test(text)) {
-    return "The browser blocked the camera on this address. Live camera needs HTTPS or localhost.";
+    return "The camera needs a secure (https) address. Scan from a photo or type the code below.";
   }
-  return `Could not start the camera (${err?.message ?? err}). Use “Scan from image” or type the roll id below.`;
+  return "Could not start the camera. Scan from a photo or type the code below.";
 }
 
 export default function ScannerPage() {
@@ -68,11 +73,11 @@ export default function ScannerPage() {
       const result = parseScan(text);
       const target = routeFor(result);
       if (!target) {
-        setMessage({ kind: "error", text: "This QR code is not a LoomSense roll or order code.", again: true });
+        setMessage({ kind: "error", text: "This is not a LoomSense roll or order code.", again: true });
         return;
       }
       setBusy(true);
-      setMessage({ kind: "ok", text: `Found ${result.type === "passport" ? "roll" : "order"} ${result.id}. Opening…` });
+      setMessage({ kind: "ok", text: result.type === "passport" ? `Found roll ${result.id}. Opening.` : "Found the order. Opening." });
 
       if (result.type === "passport") {
         try {
@@ -80,7 +85,7 @@ export default function ScannerPage() {
         } catch (err) {
           if (err?.response?.status === 404) {
             setBusy(false);
-            setMessage({ kind: "error", text: `Roll ${result.id} not found.`, again: true });
+            setMessage({ kind: "error", text: `We could not find roll ${result.id}.`, again: true });
             return;
           }
           // any other failure: open the page anyway, it has its own error state
@@ -133,7 +138,7 @@ export default function ScannerPage() {
       const text = await reader.scanFile(file, false);
       await handleDecoded(text);
     } catch {
-      setMessage({ kind: "error", text: "No QR code could be read from that image. Try a sharper, closer photo.", again: true });
+      setMessage({ kind: "error", text: "No QR code could be read from that photo. Try a sharper, closer photo.", again: true });
     } finally {
       try {
         reader.clear();
@@ -154,128 +159,77 @@ export default function ScannerPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 px-4 py-6 flex flex-col items-center">
-      <div className="w-full max-w-lg bg-white rounded-2xl shadow-sm border border-slate-200 p-5 sm:p-7 space-y-5">
-        {/* Header */}
-        <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-4">
-          <div>
-            <span className="text-xs font-bold text-blue-600 uppercase tracking-wider">LoomSense</span>
-            <h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-              <ScanLine className="w-6 h-6 text-blue-600" /> Scan QR code
-            </h1>
-            <p className="text-xs text-slate-500 mt-1">Scan a fabric roll passport or an order tracking code.</p>
-          </div>
-          <Link to="/" className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:underline shrink-0">
-            <ArrowLeft className="w-3.5 h-3.5" /> Dashboard
-          </Link>
-        </div>
+    <PublicPage
+      action={
+        <Button as={Link} to="/" variant="link">
+          Back to app
+        </Button>
+      }
+    >
+      <PageHeader title="Scan QR code" subtitle="Scan a fabric roll or an order code." />
 
-        {/* Plain HTTP on a non-localhost address: no live camera */}
-        {!secure && (
-          <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-            <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-            <p>{INSECURE_TEXT}</p>
+      {/* Plain HTTP on a non-localhost address: no live camera */}
+      {!secure && <Notice tone="warning">{INSECURE_TEXT}</Notice>}
+
+      {/* Camera area */}
+      <div className="relative aspect-square w-full overflow-hidden rounded-md border border-gray-200 bg-gray-900">
+        <div id={READER_ID} className="h-full w-full" />
+        {!cameraOn && (
+          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 text-sm text-gray-300">
+            <CameraOff size={32} aria-hidden="true" />
+            <span>{starting ? "Starting camera" : "Camera is off"}</span>
           </div>
         )}
+      </div>
+      <div id={FILE_READER_ID} className="hidden" />
 
-        {/* Camera area */}
-        <div className="relative w-full aspect-square rounded-xl bg-slate-900 overflow-hidden">
-          <div id={READER_ID} className="w-full h-full" />
-          {!cameraOn && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-slate-300 text-sm pointer-events-none">
-              <CameraOff className="w-10 h-10" />
-              <span>{starting ? "Starting camera…" : "Camera is off"}</span>
-            </div>
-          )}
-        </div>
-        <div id={FILE_READER_ID} className="hidden" />
+      {cameraOn ? (
+        <Button size="lg" onClick={stopCamera} className="w-full">
+          <CameraOff size={16} aria-hidden="true" /> Stop camera
+        </Button>
+      ) : (
+        <Button size="lg" variant="primary" onClick={startCamera} disabled={starting || busy || !secure} className="w-full">
+          <Camera size={16} aria-hidden="true" /> Start camera
+        </Button>
+      )}
 
-        {cameraOn ? (
-          <button
-            type="button"
-            onClick={stopCamera}
-            className="w-full inline-flex items-center justify-center gap-2 px-4 py-3.5 bg-slate-800 hover:bg-slate-900 text-white text-sm font-semibold rounded-xl"
-          >
-            <CameraOff className="w-5 h-5" /> Stop camera
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={startCamera}
-            disabled={starting || busy || !secure}
-            className="w-full inline-flex items-center justify-center gap-2 px-4 py-3.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-semibold rounded-xl"
-          >
-            <Camera className="w-5 h-5" /> Start camera
-          </button>
-        )}
+      {message && (
+        <Notice
+          tone={message.kind === "ok" ? "success" : "error"}
+          action={message.again && <Button onClick={scanAgain}>Scan again</Button>}
+        >
+          {message.text}
+        </Notice>
+      )}
 
-        {/* Result / error */}
-        {message && (
-          <div
-            role={message.kind === "error" ? "alert" : "status"}
-            className={`rounded-xl border p-3 text-sm flex items-start gap-2 ${
-              message.kind === "ok"
-                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                : "border-red-200 bg-red-50 text-red-700"
-            }`}
-          >
-            {message.kind === "ok" ? (
-              <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" />
-            ) : (
-              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-            )}
-            <div className="flex-1">
-              <p>{message.text}</p>
-              {message.again && (
-                <button
-                  type="button"
-                  onClick={scanAgain}
-                  className="mt-2 px-3 py-2 bg-white border border-red-200 rounded-lg text-xs font-semibold text-red-700 hover:bg-red-100"
-                >
-                  Scan again
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Fallback 1: image upload */}
-        <div className="border-t border-slate-100 pt-4 space-y-2">
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">No camera? Scan from a photo</p>
-          <label className="w-full inline-flex items-center justify-center gap-2 px-4 py-3.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-800 text-sm font-semibold rounded-xl cursor-pointer">
-            <ImageUp className="w-5 h-5" /> Scan from image
-            <input id="qr-file-input" type="file" accept="image/*" onChange={scanFile} className="sr-only" />
+      <div className="grid grid-cols-1 gap-4 border-t border-gray-200 pt-5 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <p className="text-sm text-gray-900">Scan from a photo</p>
+          <label htmlFor="qr-file-input" className={`${buttonClass("secondary")} w-full cursor-pointer`}>
+            <ImageUp size={16} aria-hidden="true" /> Choose photo
           </label>
+          <input id="qr-file-input" type="file" accept="image/*" onChange={scanFile} className="sr-only" />
         </div>
 
-        {/* Fallback 2: type or paste */}
-        <form onSubmit={submitManual} className="border-t border-slate-100 pt-4 space-y-2">
-          <label htmlFor="manual-code" className="text-xs font-semibold text-slate-500 uppercase tracking-wide block">
-            Or type a roll id or paste a link
-          </label>
+        <form onSubmit={submitManual} className="space-y-1.5">
+          <label htmlFor="manual-code" className="block text-sm text-gray-900">Type a code</label>
           <div className="flex gap-2">
-            <input
+            <Input
               id="manual-code"
               value={manual}
               onChange={(e) => setManual(e.target.value)}
-              placeholder="RL10092 or a passport link"
+              placeholder="Roll code or link"
               autoComplete="off"
               autoCapitalize="characters"
-              className="flex-1 min-w-0 text-base rounded-xl border border-slate-300 px-3 py-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="min-w-0 flex-1"
             />
-            <button
-              type="submit"
-              disabled={busy}
-              className="inline-flex items-center gap-1.5 px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-semibold rounded-xl"
-            >
-              <Search className="w-4 h-4" /> Open
-            </button>
+            <Button type="submit" disabled={busy}>Open</Button>
           </div>
         </form>
       </div>
-    </div>
+    </PublicPage>
   );
 }
 
 const INSECURE_TEXT =
-  "Live camera needs HTTPS or localhost, and this page is on plain HTTP. Use “Scan from image” with a photo or screenshot of the QR code, or type the roll id below.";
+  "The camera needs a secure (https) address and this page is not on one. Scan from a photo or type the code instead.";

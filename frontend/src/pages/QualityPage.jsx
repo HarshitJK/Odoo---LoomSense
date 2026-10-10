@@ -4,6 +4,8 @@ import { Link } from "react-router-dom";
 import { ScanLine } from "lucide-react";
 import PageHeader from "../components/common/PageHeader.jsx";
 import ApiErrorBanner from "../components/common/ApiErrorBanner.jsx";
+import Button from "../components/common/Button.jsx";
+import LoadingBlock from "../components/common/LoadingBlock.jsx";
 import MockBadge from "../components/common/MockBadge.jsx";
 
 import useApi from "../hooks/useApi.js";
@@ -11,9 +13,6 @@ import { normaliseRolls, postQualityRoll } from "../api/quality.js";
 
 // Only used when VITE_USE_MOCKS=true
 import { rolls as mockRolls } from "../mocks/quality.js";
-import { orders as mockOrders } from "../mocks/orders.js";
-import { machines as mockMachines } from "../mocks/machines.js";
-import { inventory as mockInventory } from "../mocks/inventory.js";
 
 import RollsTable from "../components/quality/RollsTable.jsx";
 import QualityForm from "../components/quality/QualityForm.jsx";
@@ -21,13 +20,13 @@ import DefectCostImpact from "../components/quality/DefectCostImpact.jsx";
 
 export default function QualityPage() {
   const rolls = useApi("/api/quality", { mock: mockRolls, transform: normaliseRolls });
-  const {user} = useAuth();
+  const { user } = useAuth();
   const options = useApi("/api/quality/options");
-  const orders = {...options, data: options.data?.orders};
-  const machines = {...options, data: options.data?.machines};
-  const batches = {...options, data: options.data?.batches};
+  const orders = { ...options, data: options.data?.orders };
+  const machines = { ...options, data: options.data?.machines };
+  const batches = { ...options, data: options.data?.batches };
 
-  // Server result of the last FAILED / REWORK roll: { roll, impact, marginBefore, marginAfter }
+  // Server result of the last failed or rework roll: { roll, impact, marginBefore, marginAfter }
   const [lastImpact, setLastImpact] = useState(null);
 
   const all = [rolls, orders, machines, batches];
@@ -44,43 +43,29 @@ export default function QualityPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <>
       <PageHeader
-        title="Quality Control & Inspection"
-        subtitle="Fabric quality checks, defect cost impact and traceability records (Feature 4)"
+        title="Quality checks"
+        subtitle="Record each fabric roll, then look up recent results."
+        action={
+          <Button as={Link} to="/scan">
+            <ScanLine size={16} aria-hidden="true" /> Scan QR code
+          </Button>
+        }
       />
       <MockBadge />
-
-      <Link
-        to="/scan"
-        className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg shadow-sm"
-      >
-        <ScanLine className="w-4 h-4" /> Scan a roll QR
-      </Link>
-
       <ApiErrorBanner error={error} onRetry={retryAll} />
 
-      {rolls.loading && !rolls.data && (
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-8 text-center text-sm text-slate-400 animate-pulse">
-          Loading quality rolls…
-        </div>
+      {!formReady && !error && <LoadingBlock label="Loading quality checks" height="h-40" />}
+
+      {formReady && (
+        <QualityForm orders={orders.data} machines={machines.data} batches={batches.data} onSubmitQC={handleSubmitQC} />
       )}
 
-      {/* Defect Cost Impact Card — numbers come from the POST /api/quality response */}
+      {/* Numbers come from the POST /api/quality response */}
       {lastImpact && <DefectCostImpact {...lastImpact} />}
 
-      {/* QC Submission Form */}
-      {formReady && (
-        <QualityForm
-          orders={orders.data}
-          machines={machines.data}
-          batches={batches.data}
-          onSubmitQC={handleSubmitQC}
-        />
-      )}
-
-      {/* Rolls Table with "View Passport" link */}
       {rolls.data && <RollsTable rolls={rolls.data} />}
-    </div>
+    </>
   );
 }
