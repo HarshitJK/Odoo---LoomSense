@@ -9,7 +9,7 @@ import sys
 import time
 
 from app import database as dbm
-from app import seed
+from app import seed, migrate
 
 
 def main():
@@ -25,6 +25,7 @@ def main():
     existing = dbm.orders().count_documents({})
     if existing and not force:
         print(f"Database already has {existing} orders: skipping seed (set FORCE_SEED=true to reload).", flush=True)
+        migrate.main()
         return
     print("Loading demo data ..." if not existing else "FORCE_SEED=true: reloading demo data ...", flush=True)
     seed.main()

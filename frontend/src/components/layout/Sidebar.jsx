@@ -1,3 +1,4 @@
+import { useAuth } from "../../context/AuthContext.jsx";
 import { NavLink } from "react-router-dom";
 import { LayoutDashboard, ClipboardList, Boxes, Factory, Users, ShieldCheck, Truck, ScanLine } from "lucide-react";
 
@@ -13,11 +14,13 @@ const links = [
 ];
 
 export default function Sidebar() {
+  const { user, logout } = useAuth();
+  const allowed = user?.role === "OWNER" ? links : links.filter(l => (user?.role === "PRODUCTION_MANAGER" ? ["/orders", "/inventory", "/production", "/quality", "/track", "/scan"] : ["/quality", "/scan"]).includes(l.to));
   return (
     <aside className="hidden w-60 shrink-0 bg-slate-900 text-slate-200 md:block">
       <div className="px-6 py-5 text-xl font-bold tracking-wide text-white">LoomSense</div>
       <nav className="flex flex-col gap-1 px-3">
-        {links.map(({ to, label, icon: Icon }) => (
+        {allowed.map(({ to, label, icon: Icon }) => (
           <NavLink
             key={to}
             to={to}
@@ -32,7 +35,7 @@ export default function Sidebar() {
             {label}
           </NavLink>
         ))}
-      </nav>
+      <p className="px-3 pt-6 text-xs">{user?.email} · {user?.role}</p><button className="p-3 text-left" onClick={logout}>Sign out</button></nav>
     </aside>
   );
 }

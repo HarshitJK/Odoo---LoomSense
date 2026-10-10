@@ -1,4 +1,7 @@
 import { Routes, Route } from "react-router-dom";
+import { AuthProvider } from "./context/AuthContext.jsx";
+import ProtectedRoute from "./components/ProtectedRoute.jsx";
+import LoginPage from "./pages/LoginPage.jsx";
 import MainLayout from "./components/layout/MainLayout.jsx";
 import OwnerDashboard from "./pages/OwnerDashboard.jsx";
 import OrdersPage from "./pages/OrdersPage.jsx";
@@ -12,22 +15,24 @@ import ScannerPage from "./pages/ScannerPage.jsx";
 
 export default function App() {
   return (
-    <Routes>
+    <AuthProvider><Routes>
+      <Route path="/login" element={<LoginPage />} />
       {/* Standalone pages (no sidebar) so they work as shareable links */}
       <Route path="/passport/:rollId" element={<FabricPassportPage />} />
       <Route path="/track" element={<BuyerTrackingPage />} />
-      <Route path="/track/:orderId" element={<BuyerTrackingPage />} />
+      <Route path="/track/:trackingToken" element={<BuyerTrackingPage />} />
       <Route path="/scan" element={<ScannerPage />} />
 
       {/* Internal pages inside the main layout */}
-      <Route element={<MainLayout />}>
+      <Route element={<ProtectedRoute />}><Route element={<MainLayout />}>
+        <Route element={<ProtectedRoute roles={["OWNER"]} />}>
         <Route path="/" element={<OwnerDashboard />} />
-        <Route path="/orders" element={<OrdersPage />} />
+        </Route><Route element={<ProtectedRoute roles={["OWNER", "PRODUCTION_MANAGER"]} />}><Route path="/orders" element={<OrdersPage />} />
         <Route path="/inventory" element={<InventoryPage />} />
         <Route path="/production" element={<ProductionPage />} />
-        <Route path="/workers" element={<WorkersPage />} />
-        <Route path="/quality" element={<QualityPage />} />
-      </Route>
-    </Routes>
+        </Route><Route element={<ProtectedRoute roles={["OWNER"]} />}><Route path="/workers" element={<WorkersPage />} />
+        </Route><Route path="/quality" element={<QualityPage />} />
+      </Route></Route>
+    </Routes></AuthProvider>
   );
 }

@@ -15,7 +15,7 @@ from datetime import datetime, timedelta
 
 from app import database as dbm
 from app.config import SIMULATOR_AUTOSTART
-from app.services import profitability
+from app.services import profitability, production_history, materials
 
 log = logging.getLogger("loomsense.simulator")
 NO_ID = {"_id": 0}
@@ -122,7 +122,7 @@ def tick() -> tuple:
 
 def _complete_order(order_id: str, machine_id: str) -> dict:
     """Order reached its quantity: move it to QUALITY_CHECK, idle its machines, return the event."""
-    dbm.orders().update_one({"orderId": order_id}, {"$set": {"status": "QUALITY_CHECK"}})
+    dbm.orders().update_one({"orderId": order_id}, {"$set": {"status": "QUALITY_CHECK", "completedAt": now_iso()}})
     # Machines keep currentOrderId so their cost stays attributed to the finished order
     dbm.machines().update_many({"currentOrderId": order_id, "status": "RUNNING"}, {"$set": {"status": "IDLE"}})
     return event_message(
@@ -149,11 +149,14 @@ def apply_reading(machine_id: str, reading: dict) -> tuple:
         finished = False
         if delta and order:
             room = max(order["quantityMeters"] - order["producedMeters"], 0)
-            step = min(delta, room)
+            step = materials.consume(order, min(delta, room))
             changes["producedMeters"] = round(m.get("producedMeters", 0) + step, 2)
             total = round(order["producedMeters"] + step, 2)
             dbm.orders().update_one({"orderId": order["orderId"]}, {"$set": {"producedMeters": total}})
             finished = step > 0 and total >= order["quantityMeters"]
+            effective = {**m, **changes}
+            rate = effective.get("productionRate") or 1
+            production_history.record(effective, order, step, step / rate, reading.get("timestamp"), finished)
         if changes:
             dbm.machines().update_one({"machineId": machine_id}, {"$set": changes})
         if changes.get("status") == "DOWN":
@@ -182,14 +185,16 @@ def _tick() -> tuple:
         }
         order = dbm.orders().find_one({"orderId": m.get("currentOrderId")}, NO_ID) if m.get("currentOrderId") else None
         finished = False
+        step = 0
         if order and m.get("productionRate") and order["producedMeters"] < order["quantityMeters"]:
             step = m["productionRate"] * factory_hours * random.uniform(0.6, 1.4)
-            step = min(step, order["quantityMeters"] - order["producedMeters"])
+            step = materials.consume(order, min(step, order["quantityMeters"] - order["producedMeters"]))
             changes["producedMeters"] = round(m["producedMeters"] + step, 2)
             order_total = round(order["producedMeters"] + step, 2)
             finished = order_total >= order["quantityMeters"]
             dbm.orders().update_one({"orderId": order["orderId"]}, {"$set": {"producedMeters": order_total}})
             touched.add(order["orderId"])
+        production_history.record({**m, **changes}, order, round(step, 2), factory_hours, completed=finished)
         dbm.machines().update_one({"machineId": machine_id}, {"$set": changes})
 
         if finished:
@@ -256,17 +261,13 @@ def reset(machine_id=None) -> None:
         raise MachineNotFound(f"Machine {machine_id} not found")
     chosen = [machine_id] if machine_id else list(seeded)
 
-    order_ids = set()
+    # A control reset restores machine health, never rewinds production history.
     for mid in chosen:
-        dbm.machines().replace_one({"machineId": mid}, seeded[mid], upsert=True)
-        if seeded[mid].get("currentOrderId"):
-            order_ids.add(seeded[mid]["currentOrderId"])
-    for o in seed.build_orders():
-        if o["orderId"] in order_ids:
-            dbm.orders().update_one(
-                {"orderId": o["orderId"]},
-                {"$set": {"producedMeters": o["producedMeters"], "status": o["status"]}})
-            profitability.refresh_order(o["orderId"])
+        old = dbm.machines().find_one({"machineId": mid})
+        if old:
+            dbm.machines().update_one({"machineId": mid}, {"$set": {
+                "temperature": seeded[mid]["temperature"], "efficiency": seeded[mid]["efficiency"],
+                "status": "IDLE" if not old.get("currentOrderId") else seeded[mid]["status"]}})
 
 
 async def control(action: str, machine_id=None, speed=None) -> dict:

@@ -1,5 +1,6 @@
 """Generate the next readable ID (ORD105, RL10094, TXN009) from the highest existing one."""
 import re
+from pymongo import ReturnDocument
 
 from app import database as dbm
 
@@ -8,7 +9,10 @@ def _next(collection, field: str, prefix: str, start: int, width: int = 0) -> st
     highest = start - 1
     for doc in collection.find({field: {"$regex": f"^{prefix}[0-9]+$"}}, {field: 1, "_id": 0}):
         highest = max(highest, int(re.sub(r"\D", "", doc[field])))
-    return f"{prefix}{highest + 1:0{width}d}"
+    key = collection.name + ":" + field
+    dbm.db.counters.update_one({"_id": key}, {"$max": {"value": highest}}, upsert=True)
+    counter = dbm.db.counters.find_one_and_update({"_id": key}, {"$inc": {"value": 1}}, return_document=ReturnDocument.AFTER)
+    return f"{prefix}{counter['value']:0{width}d}"
 
 
 def next_order_id() -> str:

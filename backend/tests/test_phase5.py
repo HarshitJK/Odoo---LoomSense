@@ -1,3 +1,4 @@
+from app import database as dbm
 import pytest
 from fastapi.testclient import TestClient
 
@@ -127,7 +128,7 @@ def test_passport_qr_is_a_png_pointing_to_the_passport_page():
 
 def test_buyer_tracking_never_exposes_internal_fields():
     for order in client.get("/api/orders").json():
-        res = client.get(f"/api/buyer/track/{order['orderId']}")
+        res = client.get(f"/api/buyer/track/{order['trackingToken']}")
         assert res.status_code == 200
         data = res.json()
         assert_public(data)
@@ -140,15 +141,14 @@ def test_buyer_tracking_never_exposes_internal_fields():
 
 def test_buyer_tracking_stays_public_after_rework():
     post_roll(status="REWORK", affectedMeters=120)
-    data = client.get("/api/buyer/track/ORD104").json()
+    data = client.get("/api/buyer/track/" + dbm.orders().find_one({"orderId": "ORD104"})["trackingToken"]).json()
     assert_public(data)
     assert data["qualityStatus"] == "IN_REVIEW"
 
 
-def test_buyer_tracking_accepts_hyphen_and_lowercase():
-    a = client.get("/api/buyer/track/ORD104").json()
-    assert client.get("/api/buyer/track/ORD-104").json() == a
-    assert client.get("/api/buyer/track/ord-104").json() == a
+def test_buyer_tracking_rejects_predictable_order_ids():
+    for value in ("ORD104", "ORD-104", "ord-104"):
+        assert client.get("/api/buyer/track/" + value).status_code == 404
 
 
 def test_buyer_tracking_unknown_order_has_friendly_404():
@@ -158,7 +158,7 @@ def test_buyer_tracking_unknown_order_has_friendly_404():
 
 
 def test_buyer_tracking_stages():
-    ord104 = client.get("/api/buyer/track/ORD104").json()
+    ord104 = client.get("/api/buyer/track/" + dbm.orders().find_one({"orderId": "ORD104"})["trackingToken"]).json()
     assert [s["name"] for s in ord104["stages"]] == [
         "Raw Material Allocated", "Spinning", "Weaving", "Dyeing", "Quality Check", "Ready for Dispatch"]
     assert [s["state"] for s in ord104["stages"]] == [
@@ -169,11 +169,11 @@ def test_buyer_tracking_stages():
     assert ord104["dispatchStatus"] == "NOT_DISPATCHED"
     assert ord104["qualityStatus"] == "PASSED"
 
-    ord091 = client.get("/api/buyer/track/ORD091").json()
+    ord091 = client.get("/api/buyer/track/" + dbm.orders().find_one({"orderId": "ORD091"})["trackingToken"]).json()
     assert ord091["currentStage"] == "Quality Check"
     assert ord091["qualityStatus"] == "IN_REVIEW"
 
-    ord071 = client.get("/api/buyer/track/ORD071").json()
+    ord071 = client.get("/api/buyer/track/" + dbm.orders().find_one({"orderId": "ORD071"})["trackingToken"]).json()
     assert all(s["state"] == "DONE" for s in ord071["stages"])
     assert ord071["dispatchStatus"] == "DISPATCHED"
     assert ord071["currentStage"] == "Dispatched"

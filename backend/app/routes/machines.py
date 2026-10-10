@@ -32,13 +32,19 @@ async def machine_reading(machine_id: str, body: MachineReading):
     """A machine (or the sample feeder) reports its state: updates the machine and its order, then broadcasts."""
     try:
         events, views = await asyncio.to_thread(
-            simulator.apply_reading, machine_id, body.model_dump(exclude={"timestamp"}))
+            simulator.apply_reading, machine_id, body.model_dump())
     except simulator.MachineNotFound as e:
         raise HTTPException(404, str(e))
     for event in events:
         await simulator.emit(event)
     await simulator.emit(simulator.update_message(views))
     return next(v for v in views if v["machineId"] == machine_id)
+
+
+@router.get("/monthly-summary")
+def monthly_summary(month: str):
+    from app.services.month_end import machine_summary
+    return machine_summary(month)
 
 
 @router.get("/{machine_id}")
@@ -56,6 +62,14 @@ def update_machine(machine_id: str, body: MachineUpdate):
         before = dbm.machines().find_one({"machineId": machine_id}, NO_ID)
         if not before:
             raise HTTPException(404, f"Machine {machine_id} not found")
+        if changes.get("currentOrderId") and changes["currentOrderId"] != before.get("currentOrderId"):
+            from app.utils.ids import normalize_id
+            changes["currentOrderId"] = normalize_id(changes["currentOrderId"])
+            order = dbm.orders().find_one({"orderId": changes["currentOrderId"]})
+            if not order:
+                raise HTTPException(404, "Order not found")
+            changes.update(producedMeters=0, targetMeters=max(0, order["quantityMeters"]-order["producedMeters"]))
+            dbm.orders().update_one({"orderId": order["orderId"]}, {"$set": {"machineId": machine_id}})
         dbm.machines().update_one({"machineId": machine_id}, {"$set": changes})
         after = dbm.machines().find_one({"machineId": machine_id}, NO_ID)
         # machine cost of the affected orders changes with the assignment or rate

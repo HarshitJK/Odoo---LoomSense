@@ -18,6 +18,7 @@ load_dotenv()
 sys.stdout.reconfigure(encoding="utf-8")
 
 BASE = sys.argv[1].rstrip("/") if len(sys.argv) > 1 else "http://localhost:8000"
+TOKEN = os.getenv("LOOMSENSE_TOKEN", "")
 ORDER = "ORD104"
 DEMO_SPEED = 25  # simulator speed during the demo, so production finishes in about 20 seconds
 
@@ -25,7 +26,7 @@ DEMO_SPEED = 25  # simulator speed during the demo, so production finishes in ab
 def call(method, path, body=None, headers=None):
     req = urllib.request.Request(
         BASE + path, method=method, data=json.dumps(body).encode() if body is not None else None,
-        headers={"Content-Type": "application/json", **(headers or {})})
+        headers={"Content-Type": "application/json", "Authorization": "Bearer " + TOKEN, **(headers or {})})
     try:
         with urllib.request.urlopen(req) as res:
             return res.status, json.loads(res.read() or "null")
@@ -55,6 +56,8 @@ def show_costs(label, cost):
 
 
 # ---------------------------------------------------------------- start
+if not TOKEN:
+    TOKEN = api("POST", "/api/auth/login", {"email": "owner@loomsense.demo", "password": os.getenv("SEED_OWNER_PASSWORD", "")})["accessToken"]
 print(f"LoomSense demo flow against {BASE}")
 health = api("GET", "/api/health")
 print(f"API is up, database {health['database']}")
@@ -153,7 +156,7 @@ print(f"QR code: {len(png)} bytes, {'valid PNG' if png[1:4] == b'PNG' else 'NOT 
 
 # ---------------------------------------------------------------- 8 buyer
 step(8, "Buyer tracking page (buyer-safe data only)")
-t = api("GET", f"/api/buyer/track/ORD-104")
+t = api("GET", "/api/buyer/track/" + api("GET", "/api/orders/ORD104")["trackingToken"])
 print(f"Order {t['orderId']} for {t['buyerName']}: {t['quantityMeters']:,.0f} m {t['colour']} {t['fabricType']}")
 print(f"Progress {t['progress']}% | stage: {t['currentStage']} | quality: {t['qualityStatus']}"
       f" | dispatch: {t['dispatchStatus']} | expected {t['expectedCompletion']}")

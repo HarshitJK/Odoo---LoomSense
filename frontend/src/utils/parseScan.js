@@ -10,7 +10,7 @@
 
 const UNKNOWN = { type: "unknown" };
 const ROUTE_IN_PATH = /\/(passport|track)\/([^/?#\s]+)\/?$/i;
-const ID_OK = /^[A-Za-z0-9_-]{1,40}$/;
+const ID_OK = /^[A-Za-z0-9_-]{1,128}$/;
 
 /** "rl-10092" -> "RL10092" */
 export function normaliseId(id) {
@@ -52,10 +52,12 @@ export function parseScan(input) {
       return UNKNOWN;
     }
     if (!ID_OK.test(id)) return UNKNOWN;
-    return { type: match[1].toLowerCase() === "passport" ? "passport" : "track", id: normaliseId(id) };
+    const type = match[1].toLowerCase() === "passport" ? "passport" : "track";
+    return { type, id: type === "passport" ? normaliseId(id) : id };
   }
 
   if (/^RL-?\d+$/i.test(text)) return { type: "passport", id: normaliseId(text) };
+  if (/^[A-Za-z0-9_-]{43}$/.test(text)) return { type: "track", id: text };
   if (/^ORD-?\d+$/i.test(text)) return { type: "track", id: normaliseId(text) };
   return UNKNOWN;
 }

@@ -1,6 +1,7 @@
 from datetime import date, datetime
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
+from app.services.auth import current_user
 from fastapi.responses import Response
 
 from app import database as dbm
@@ -20,13 +21,19 @@ def find_roll(roll_id: str) -> dict:
     return roll
 
 
+def safe_quality(record, user):
+    if user["role"] != "OWNER":
+        return {k: v for k, v in record.items() if k not in ("reworkCost", "impact", "marginBefore", "marginAfter")}
+    return record
+
+
 @router.get("")
-def list_rolls():
-    return list(dbm.quality_checks().find({}, NO_ID).sort([("date", -1), ("rollId", -1)]))
+def list_rolls(user=Depends(current_user)):
+    return [safe_quality(r, user) for r in dbm.quality_checks().find({}, NO_ID).sort([("date", -1), ("rollId", -1)])]
 
 
 @router.post("", status_code=201)
-def create_roll(body: QualityCreate):
+def create_roll(body: QualityCreate, user=Depends(current_user)):
     """Store a roll. FAILED / REWORK rolls get a cost impact that feeds the order's costs."""
     data = body.model_dump()
     order = None
@@ -73,12 +80,19 @@ def create_roll(body: QualityCreate):
     roll.pop("_id", None)
     margin_after = profitability.refresh_order(order["orderId"])["margin"] if order else None
 
-    return {**roll, "impact": impact, "marginBefore": margin_before, "marginAfter": margin_after}
+    return safe_quality({**roll, "impact": impact, "marginBefore": margin_before, "marginAfter": margin_after}, user)
+
+
+@router.get("/options")
+def quality_options():
+    return {"orders": list(dbm.orders().find({}, {"_id": 0, "orderId": 1, "buyerName": 1})),
+            "machines": list(dbm.machines().find({}, {"_id": 0, "machineId": 1, "name": 1})),
+            "batches": list(dbm.inventory().find({}, {"_id": 0, "batchId": 1, "material": 1, "colour": 1}))}
 
 
 @router.get("/{roll_id}")
-def get_roll(roll_id: str):
-    return find_roll(roll_id)
+def get_roll(roll_id: str, user=Depends(current_user)):
+    return safe_quality(find_roll(roll_id), user)
 
 
 # ---- public fabric passport (no cost or profit fields) ----

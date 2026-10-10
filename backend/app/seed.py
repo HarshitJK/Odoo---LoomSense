@@ -1,5 +1,8 @@
 """Load demo data: python -m app.seed  (clears and reinserts, safe to re-run)."""
 import random
+import os
+from datetime import datetime, timezone
+from app.services.auth import hash_password
 from datetime import date, timedelta
 
 from app import database as dbm
@@ -152,6 +155,7 @@ def main():
     if not dbm.ping():
         raise SystemExit("MongoDB is not reachable. Check MONGODB_URI in backend/.env")
 
+    dbm.db.counters.delete_many({})
     data = {
         dbm.orders(): build_orders(),
         dbm.machines(): build_machines(),
@@ -175,11 +179,63 @@ def main():
         counts[coll.name] = len(docs)
         print(f"{coll.name}: {len(docs)} inserted")
 
+    seed_financial_history()
+
     # Compute costs, profit and margin from the operational data and store them on each order
     for o in ORDERS:
         p = profitability.refresh_order(o[0])
         print(f"  {o[0]}: revenue {p['revenue']:,.0f}  cost {p['totalCost']:,.0f}  margin {p['margin']}%")
     return counts
+
+
+def seed_financial_history():
+    """Explicit demo activity; never backfill real history from mutable live state."""
+    for name in ("materialPurchases", "machineProductionEvents", "operatingExpenses", "materialConsumption", "materialReservations"):
+        dbm.db[name].delete_many({})
+    machines = {m["machineId"]: m for m in build_machines()}
+    batches = {b["batchId"]: b for b in dbm.inventory().find({})}
+    rates = {w[0]: w[2] for w in WORKERS}
+    for worker, rate in rates.items():
+        dbm.attendance().update_many({"workerId": worker}, {"$set": {"hourlyRate": rate}})
+    for o in build_orders():
+        parts = [("2026-09-28", 600), ("2026-10-03", 600)] if o["orderId"] == "ORD091" else [(o["orderDate"][:7] + "-08", o["producedMeters"])]
+        machine_parts = [("W02", 400), ("W04", 360)] if o["orderId"] == "ORD108" else None
+        for i, (day, meters) in enumerate(parts):
+            for j, (mid, amount) in enumerate(machine_parts or [(o["machineId"], meters)]):
+                m = machines[mid]
+                hours = amount / (m["productionRate"] or 100)
+                dbm.db.machineProductionEvents.insert_one({"eventId": f"SEED{o['orderId']}{i}{j}", "machineId": mid,
+                    "orderId": o["orderId"], "timestamp": day + "T12:00:00", "producedMetersDelta": amount,
+                    "runtimeMinutes": hours * 60, "machineCost": hours * m["costPerHour"], "efficiency": m["efficiency"],
+                    "completed": i == len(parts)-1 and o["producedMeters"] >= o["quantityMeters"], "source": "demo"})
+            kg = (o.get("yarnConsumedKg") or o["producedMeters"] * .59) * meters / o["producedMeters"]
+            dbm.db.materialConsumption.insert_one({"consumptionId": f"SEED{o['orderId']}{i}", "orderId": o["orderId"],
+                "batchId": o["yarnBatch"], "date": day, "quantityKg": kg, "costPerKg": batches[o["yarnBatch"]]["costPerKg"],
+                "cost": kg * batches[o["yarnBatch"]]["costPerKg"]})
+        dbm.orders().update_one({"orderId": o["orderId"]}, {"$set": {"productionHistoryComplete": True,
+            "materialHistoryComplete": True, "createdAt": o["orderDate"] + "T00:00:00", "updatedAt": datetime.now(timezone.utc).isoformat()}})
+    for i, batch in enumerate(batches.values()):
+        amount = batch["quantityKg"] * batch["costPerKg"]
+        paid = amount if i % 2 == 0 else amount / 2
+        day = batch["receivedDate"]
+        dbm.db.materialPurchases.insert_one({"purchaseId": f"PURDEMO{i}", "supplier": batch["supplier"],
+            "invoiceNumber": f"DEMO-{i}", "batchId": batch["batchId"], "material": batch["material"], "colour": batch["colour"],
+            "quantityKg": batch["quantityKg"], "costPerKg": batch["costPerKg"], "subtotal": amount, "otherCharges": 0,
+            "totalAmount": amount, "purchaseDate": day, "paidAmount": paid, "paymentStatus": "PAID" if paid == amount else "PARTIAL",
+            "payments": [{"date": day, "amount": paid}], "notes": "Demo receipt; stock seeded separately", "inventoryReceived": True,
+            "createdAt": day + "T09:00:00", "updatedAt": day + "T09:00:00"})
+    dbm.db.operatingExpenses.insert_one({"expenseId": "EXPDEMO", "date": "2026-10-03", "amount": 5000, "description": "Factory rent allocation"})
+    for role, email in [("OWNER", "owner@loomsense.demo"), ("PRODUCTION_MANAGER", "manager@loomsense.demo"), ("WORKER_QC", "qc@loomsense.demo")]:
+        password = os.getenv("SEED_" + role + "_PASSWORD")
+        if password:
+            if len(password) < 12:
+                raise ValueError("Seed passwords must have at least 12 characters")
+            dbm.db.users.update_one({"email": email}, {"$set": {"email": email, "role": role, "active": True,
+                "passwordHash": hash_password(password), "updatedAt": datetime.now(timezone.utc).isoformat()}}, upsert=True)
+    for coll, field in [("users","email"),("orders","orderId"),("orders","trackingToken"),("materialPurchases","purchaseId"),("machineProductionEvents","eventId")]:
+        dbm.db[coll].create_index(field, unique=True)
+    dbm.db.materialPurchases.create_index([("supplier",1),("invoiceNumber",1)], unique=True)
+    dbm.db.machineProductionEvents.create_index("timestamp")
 
 
 if __name__ == "__main__":

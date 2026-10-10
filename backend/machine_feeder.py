@@ -21,7 +21,7 @@ READINGS = Path(__file__).parent / "sample_data" / "machine_readings.json"
 def post(machine_id: str, body: dict) -> int:
     req = urllib.request.Request(
         f"{API_URL}/api/machines/{machine_id}/readings", data=json.dumps(body).encode(),
-        headers={"Content-Type": "application/json"}, method="POST")
+        headers={"Content-Type": "application/json", "Authorization": "Bearer " + os.getenv("FEEDER_TOKEN", "")}, method="POST")
     try:
         with urllib.request.urlopen(req, timeout=10) as res:
             return res.status

@@ -1,3 +1,5 @@
+import PurchaseRegister from "../components/PurchaseRegister.jsx";
+import { useAuth } from "../context/AuthContext.jsx";
 import { Package, AlertTriangle, DollarSign } from "lucide-react";
 
 import PageHeader from "../components/common/PageHeader.jsx";
@@ -110,6 +112,7 @@ function StockTable({ batches }) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function InventoryPage() {
+  const {user} = useAuth();
   // GET /api/inventory — returns batches with a computed `lowStock` boolean
   const { data, loading, error, reload } = useApi("/api/inventory", { mock: mockInventory });
   const inventory = data ?? [];
@@ -126,6 +129,7 @@ export default function InventoryPage() {
         subtitle="Yarn stock levels, values, and order readiness checker"
       />
       <MockBadge />
+      {user.role === "OWNER" && <PurchaseRegister onReceive={reload} />}
 
       <ApiErrorBanner error={error} onRetry={reload} />
 

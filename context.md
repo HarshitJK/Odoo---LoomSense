@@ -1,3 +1,35 @@
+# Current architecture additions
+
+Buyer Order → Readiness Check → Raw Material Reservation → Production → Machine + Labour Cost Attribution
+→ QC / Rework → Fabric Passport → Dispatch → Buyer Tracking → Buyer Payment → True Order Cost
+→ Month-End Closing → Profit / Leakage Analysis.
+
+The six feature areas remain profitability, raw material/readiness, live production, passports/quality,
+attendance/wages and buyer tracking. The API remains Python FastAPI/PyMongo; browser remains React/Vite/Tailwind.
+The existing simulator emits live WebSocket state plus minute-aggregated durable production records.
+
+New collections: counters (atomic readable ID sequences), users (scrypt password hashes, roles), materialPurchases (bills plus dated payment entries),
+machineProductionEvents (dated meters/runtime/cost), materialConsumption (dated consumed kg/unit cost),
+materialReservations (stock held per order/batch), operatingExpenses (dated costs).
+Existing orders gain trackingToken, timestamps and history-completeness flags. Attendance captures hourlyRate.
+History flags distinguish verified new/seeded history from unknown older activity; migration never reconstructs
+past production from today's mutable machine state. Supplier bills never become order consumption costs.
+
+Authentication is implemented in services/auth.py and route dependencies. The manager may view projected
+acceptance economics but cannot access owner financial dashboards or actual order profits. QC uses safe
+picklists and stripped financial responses. Public passport/tracking response allowlists are preserved.
+WebSocket clients authenticate before receiving a snapshot. Run a single API instance.
+
+The month_end service groups actual dated records, not orderDate. The books show buyer cash less incurred
+costs and separately dated supplier cash paid. Lifetime order margins and provisional work-in-progress values
+are labelled separately. This is management accounting rather than a full statutory/cash ledger.
+
+Telemetry currently comes from the Python simulator; replace its input later with PLC/IoT readings via MQTT,
+OPC-UA or Modbus. Real industrial integration, bank reconciliation, transactional crash recovery and historical
+imports remain outside this hackathon implementation.
+
+---
+
 # LoomSense — Project Context
 
 ## 1. Project Title

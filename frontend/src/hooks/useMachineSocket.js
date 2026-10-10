@@ -21,7 +21,7 @@ export default function useMachineSocket(enabled = true) {
 
     const connect = () => {
       ws = new WebSocket(API_URL.replace(/^http/, "ws") + "/ws/machines");
-      ws.onopen = () => setConnected(true);
+      ws.onopen = () => { ws.send(JSON.stringify({token: sessionStorage.getItem("loomsenseToken")})); setConnected(true); };
       ws.onclose = () => {
         setConnected(false);
         if (!closed) retry = setTimeout(connect, 3000);

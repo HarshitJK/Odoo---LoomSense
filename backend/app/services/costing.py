@@ -34,6 +34,8 @@ def load_data(order_id: str = None) -> dict:
     collections (orders, attendance, quality, payments) are limited to that order."""
     one = {"orderId": order_id} if order_id else {}
     return {
+        "productionEvents": list(dbm.db.machineProductionEvents.find(one, NO_ID)),
+        "consumption": list(dbm.db.materialConsumption.find(one, NO_ID)),
         "orders": list(dbm.orders().find(one, NO_ID).sort("orderId", 1)),
         "attendance": list(dbm.attendance().find(one, NO_ID)),
         "rates": hourly_rates(),
@@ -61,7 +63,7 @@ def calculate_labour_cost(attendance_records: list, hourly_rates: dict) -> dict:
     regular = overtime = hours = 0.0
     workers = set()
     for rec in attendance_records:
-        rate = hourly_rates.get(rec.get("workerId"), 0)  # unknown worker counts as 0
+        rate = rec.get("hourlyRate", hourly_rates.get(rec.get("workerId"), 0))  # unknown worker counts as 0
         regular += rec.get("hoursWorked", 0) * rate
         overtime += rec.get("overtimeHours", 0) * rate * OVERTIME_MULTIPLIER
         hours += rec.get("hoursWorked", 0) + rec.get("overtimeHours", 0)
@@ -139,6 +141,10 @@ def machine_hours(order: dict, data: dict) -> list:
     Machines currently assigned to the order count their own producedMeters / productionRate.
     If none is assigned (finished order), use the order's machine and producedMeters.
     """
+    history = [e for e in data.get("productionEvents", []) if e.get("orderId") == order["orderId"]]
+    if order.get("productionHistoryComplete"):
+        return [(e["machineId"], e.get("runtimeMinutes", 0) / 60,
+                 e.get("machineCost", 0) / (e["runtimeMinutes"] / 60) if e.get("runtimeMinutes") else 0) for e in history]
     runs = []
     for m in data["machines"]:
         if m.get("currentOrderId") == order["orderId"] and m.get("productionRate"):
@@ -160,6 +166,10 @@ def calculate_order_cost(order_id: str, data: dict = None) -> dict:
         yarn_kg = YARN_KG_PER_METRE * order.get("producedMeters", 0)
     raw = calculate_raw_material_cost(yarn_kg, yarn_price(order, data))
 
+    consumption = [c for c in data.get("consumption", []) if c.get("orderId") == order_id]
+    if order.get("materialHistoryComplete"):
+        raw = round(sum(c["cost"] for c in consumption), 2)
+        yarn_kg = sum(c["quantityKg"] for c in consumption)
     attendance = [a for a in data["attendance"] if a.get("orderId") == order_id]
     labour = calculate_labour_cost(attendance, data["rates"])
 

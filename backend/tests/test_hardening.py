@@ -36,6 +36,8 @@ def has_key(data, key):
 
 def test_no_mongo_id_in_any_get_response():
     for path in GET_PATHS:
+        if path == "/api/buyer/track/ORD104":
+            path = "/api/buyer/track/" + dbm.orders().find_one({"orderId": "ORD104"})["trackingToken"]
         res = client.get(path)
         assert res.status_code == 200, path
         assert not has_key(res.json(), "_id"), path

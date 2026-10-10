@@ -1,6 +1,7 @@
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+from datetime import date as Date
 
 
 class Transaction(BaseModel):
@@ -17,3 +18,10 @@ class TransactionCreate(BaseModel):
     orderId: Optional[str] = None
     amount: float = Field(gt=0)
     date: Optional[str] = None
+
+    @field_validator("date")
+    @classmethod
+    def valid_date(cls, value):
+        if value is not None:
+            return Date.fromisoformat(value).isoformat()
+        return value

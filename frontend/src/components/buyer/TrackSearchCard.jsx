@@ -32,7 +32,7 @@ export default function TrackSearchCard({ initialValue = "" }) {
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Enter Tracking ID (e.g. ORD104)"
+            placeholder="Enter the secure tracking token"
             className="w-full text-sm rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-medium"
           />
         </div>
@@ -47,32 +47,7 @@ export default function TrackSearchCard({ initialValue = "" }) {
       </form>
 
       <div className="pt-2 border-t border-slate-100 flex flex-col gap-2.5 text-xs text-slate-400">
-        <div>
-          <span>Try sample orders: </span>
-          <button
-            type="button"
-            onClick={() => navigate("/track/ORD104")}
-            className="text-blue-600 hover:underline font-mono font-medium ml-1 cursor-pointer"
-          >
-            ORD104
-          </button>
-          <span className="mx-1">·</span>
-          <button
-            type="button"
-            onClick={() => navigate("/track/ORD071")}
-            className="text-blue-600 hover:underline font-mono font-medium cursor-pointer"
-          >
-            ORD071
-          </button>
-          <span className="mx-1">·</span>
-          <button
-            type="button"
-            onClick={() => navigate("/track/ORD091")}
-            className="text-blue-600 hover:underline font-mono font-medium cursor-pointer"
-          >
-            ORD091
-          </button>
-        </div>
+        <p>Use the private tracking link supplied by your mill.</p>
 
         <div>
           <button

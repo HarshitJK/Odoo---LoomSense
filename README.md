@@ -1,3 +1,116 @@
+# Updated LoomSense implementation
+
+The current implementation preserves FastAPI, PyMongo/MongoDB, React/Vite/Tailwind,
+the Python machine simulator, WebSockets, passports, QC, attendance and leakage analysis.
+The following describes the current contract and supersedes older unauthenticated demo examples below.
+
+## Run locally (PowerShell)
+
+From the repository root:
+
+```powershell
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+notepad .env
+# Set JWT_SECRET (32+ random characters) and all three SEED_*_PASSWORD values (12+ characters).
+# Keep the existing .env instead if already configured; add the four new settings to it.
+docker compose up --build
+```
+
+Open http://localhost:5173/login. Accounts: `owner@loomsense.demo`,
+`manager@loomsense.demo`, `qc@loomsense.demo`; passwords are the values you configured.
+Docker seeds only an empty database. For existing data it runs a non-destructive token/user migration.
+Do not use FORCE_SEED on data you want to preserve.
+
+Without Docker, with MongoDB already running:
+
+```powershell
+cd backend
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt -r requirements-dev.txt
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+notepad .env
+# Set MONGODB_URI, JWT_SECRET and all SEED_*_PASSWORD values.
+python -m app.migrate
+# For a NEW disposable demo database only (this replaces demo collections):
+python -m app.seed
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+In another terminal:
+
+```powershell
+cd frontend
+npm ci
+npm run dev -- --host 127.0.0.1
+```
+
+Verification:
+
+```powershell
+cd backend
+python -m pytest -q
+cd ../frontend
+npm test
+npm run build
+```
+
+Tests use an isolated mongomock database and real JWT authentication. No test connects to your
+configured MongoDB. The in-memory tests do not prove replica-set transaction or deployment behavior.
+
+## Judge walkthrough
+
+1. Log in as owner; open Orders, create an order, run readiness, review yarn shortage and projected costs/margin, then accept.
+2. Receive yarn from Inventory / Add Purchase; choose a new batch if its price or supplier differs.
+3. Open order details, reserve matching yarn, assign an idle machine, and open Production to watch live output.
+4. Record attendance in Workers; record QC in Quality; open the fabric passport/QR.
+5. In Orders, open the secure buyer tracking link and record a dated buyer payment.
+6. Open the owner dashboard / MONTH-END / CLOSE BOOKS; compare September and October 2026.
+7. Review bills, regular/overtime wages, output by machine, lifetime order profitability and leakage.
+
+Demo data has six orders, five buyers, six machines, ten workers, five yarn batches,
+163 attendance entries, seven QC records, purchases, production history, payments,
+partial/unpaid orders and high/low-margin examples. ORD091 starts in September and has
+October production, wages and rework; tests additionally record its October buyer payment.
+
+## Accounting and access
+
+Monthly books use activity dates: buyer transaction date, attendance date, purchase date,
+production event timestamp, QC date and operating expense date. Never use orderDate to assign
+a whole order to a month. Production history captures runtime, unit costs and efficiency;
+attendance captures the wage rate. Historical machine totals never use current machine counters.
+Machine records and consumption are aggregated by minute; simulator runtime is accelerated factory time.
+
+`netCashResult` is the requested compatibility field for buyer cash received minus incurred bills,
+wages and operating/rework cost estimates. This is a management balance, not bank cash flow or
+statutory accrual profit. Supplier cash paid is separately dated as `supplierPaymentsMade`.
+Production value is an estimate, not additional cash or recognized revenue. Rework estimates
+must not also be entered as ordinary wages/expenses for the same activity.
+Lifetime order cost uses consumed material + attributed labour + recorded machine cost + rework + other.
+Purchases do not add to order costs. In-progress order margins are provisional.
+
+Owner: all internal access. Manager: orders/readiness, inventory, machines, operational QC;
+projected acceptance economics are explicitly allowed, actual order costs/profit and owner finance are not.
+Worker/QC: quality entry, safe order/machine/batch picklists and passports. Payroll/attendance administration
+is owner-only; worker self-attendance is not exposed. Sidebar and backend checks enforce these roles.
+JWTs expire after eight hours; passwords use salted scrypt. Serve over HTTPS outside local development.
+WebSockets require an initial JSON message `{ "token": "<JWT>" }` before any snapshot.
+Public tracking accepts only random order trackingToken values, never predictable order IDs.
+
+## Deployment / limitations
+
+Set JWT_SECRET in Render (blueprint generates it); run `python -m app.migrate` with the configurable
+seed passwords once to create users on an existing database. Keep one API process/instance: simulator,
+WebSocket connections and operational locks are process-local. Feeder requires FEEDER_TOKEN from manager login. API smoke/demo scripts accept LOOMSENSE_TOKEN or log in with SEED_OWNER_PASSWORD; ws_check.py requires LOOMSENSE_TOKEN.
+Machine control reset restores health without rewinding financial history. Full demo reset remains owner + admin-key protected.
+Legacy orders keep their costing fallback; missing historical machine output is not invented. Re-seed only a disposable demo
+or import verified historical activity for complete older month reports. Dates of machine activity are UTC minute buckets.
+The current machine source is a Python simulator; future PLC/IoT sources may use MQTT, OPC-UA or Modbus.
+There is no tax/GST ledger, bank reconciliation, payroll disbursement ledger, month locking, or production-grade login throttling.
+Cross-collection operational writes currently require the single-process deployment and are not fully transactional across process crashes.
+
+---
+
 # LoomSense — Textile Production & Profit Intelligence Platform
 
 LoomSense connects the full lifecycle of a textile order

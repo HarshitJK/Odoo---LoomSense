@@ -22,7 +22,7 @@ describe("parseScan: full URLs (only the path counts)", () => {
 
   it("normalises hyphens and case in the id", () => {
     expect(parseScan("http://x.test/passport/rl-10092")).toEqual(passport("RL10092"));
-    expect(parseScan("http://x.test/track/ord-104")).toEqual(track("ORD104"));
+    expect(parseScan("http://x.test/track/ord-104")).toEqual(track("ord-104"));
   });
 
   it("accepts a path prefix, a scheme-less URL and a bare path", () => {
@@ -76,4 +76,11 @@ describe("routeFor", () => {
     expect(routeFor(track("ORD104"))).toBe("/track/ORD104");
     expect(routeFor(unknown)).toBeNull();
   });
+});
+
+
+it("preserves case and punctuation in secure tracking tokens", () => {
+  const token = "aB_cD-eF" + "x".repeat(35);
+  expect(parseScan(`https://mill.test/track/${token}`)).toEqual({type:"track",id:token});
+  expect(parseScan(token)).toEqual({type:"track",id:token});
 });

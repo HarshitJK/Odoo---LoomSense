@@ -1,4 +1,5 @@
 """Can the factory start this order, and what will it earn?"""
+from app import database as dbm
 from app.config import TARGET_MARGIN, YARN_KG_PER_METRE
 from app.services import costing, profitability
 
@@ -53,18 +54,22 @@ def check_readiness(order_id: str = None, request: dict = None) -> dict:
     meters = spec["quantityMeters"]
     batches = costing.matching_batches(spec.get("fabricType"), spec.get("colour"), data)
     available_kg = sum(b["quantityKg"] for b in batches)
-    availability = check_material_availability(meters * YARN_KG_PER_METRE, available_kg)
+    reserved = sum(b.get("reservedKg", 0) for b in batches)
+    own = sum(r["quantityKg"] for r in dbm.db.materialReservations.find({"orderId": order_id})) if order_id else 0
+    remaining = max(0, meters - order.get("producedMeters", 0)) if order_id else meters
+    availability = check_material_availability(remaining * YARN_KG_PER_METRE, max(0, available_kg - reserved + own))
 
     # Price the yarn from matching stock (weighted average costPerKg)
     price = (sum(b["quantityKg"] * b["costPerKg"] for b in batches) / available_kg) if available_kg else 0.0
     bench = per_metre_benchmarks(data, exclude_order_id=order_id)
-    material = round(availability["requiredYarnKg"] * price, 2)
+    material = round(meters * YARN_KG_PER_METRE * price, 2)
     labour = round(bench["labour"] * meters, 2)
     machine = round(bench["machine"] * meters, 2)
     projected_cost = round(material + labour + machine, 2)
 
     revenue = spec.get("expectedRevenue", 0)
     return {
+        "estimationWarning": "No matching stock price or completed-order benchmark: projected costs are incomplete." if not price or not bench["labour"] or not bench["machine"] else None,
         "orderId": order_id,
         **availability,
         "projectedMaterialCost": material,

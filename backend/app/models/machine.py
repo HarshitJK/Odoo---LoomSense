@@ -1,6 +1,7 @@
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+from datetime import datetime
 
 
 class Machine(BaseModel):
@@ -39,3 +40,10 @@ class MachineReading(BaseModel):
     producedMetersDelta: float = Field(default=0, ge=0)
     status: Optional[Literal["RUNNING", "IDLE", "DOWN"]] = None
     timestamp: Optional[str] = None
+
+    @field_validator("timestamp")
+    @classmethod
+    def valid_timestamp(cls, value):
+        if value:
+            return datetime.fromisoformat(value).isoformat()
+        return value

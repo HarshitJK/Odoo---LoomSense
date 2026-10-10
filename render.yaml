@@ -23,3 +23,5 @@ services:
         generateValue: true
       - key: SIMULATOR_AUTOSTART
         value: "true"
+      - key: JWT_SECRET
+        generateValue: true

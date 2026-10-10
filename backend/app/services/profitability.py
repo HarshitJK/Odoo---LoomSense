@@ -98,10 +98,15 @@ def month_label(month: str) -> str:
 
 
 def monthly_summary(month: str, profits: list = None) -> dict:
-    """Orders are assigned to the month of their orderDate."""
-    profits = all_order_profits() if profits is None else profits
-    in_month = [p for p in profits if (p["orderDate"] or "").startswith(month)]
-    return {"month": month, "label": month_label(month), **_summarise(in_month)}
+    """Compatibility adapter over activity-dated books; profits is ignored."""
+    from app.services.month_end import report
+    r = report(month)
+    return {"month": month, "label": month_label(month), "revenue": r["totalCashIn"],
+        "totalCost": r["totalExpenses"], "profit": r["netCashResult"],
+        "margin": calculate_margin(r["totalCashIn"], r["netCashResult"]),
+        "orderCount": r["productionOverview"]["totalOrders"],
+        "costBreakdown": {"rawMaterial": r["rawMaterialBills"], "labour": r["workerWages"],
+            "machine": r["machineOperatingCost"], "rework": r["reworkCost"], "other": r["otherExpenses"]}}
 
 
 def last_months(count: int = 4, today: date = None) -> list:
@@ -117,15 +122,11 @@ def last_months(count: int = 4, today: date = None) -> list:
 
 
 def monthly_trend(profits: list = None) -> list:
-    profits = all_order_profits() if profits is None else profits
     trend = []
     for month in last_months(4):
-        part = _summarise([p for p in profits if (p["orderDate"] or "").startswith(month)])
-        trend.append({
-            "month": month, "label": month_label(month),
-            "revenue": part["revenue"], "cost": part["totalCost"],
-            "profit": part["profit"], "margin": part["margin"],
-        })
+        part = monthly_summary(month)
+        trend.append({"month": month, "label": month_label(month), "revenue": part["revenue"],
+                      "cost": part["totalCost"], "profit": part["profit"], "margin": part["margin"]})
     return trend
 
 

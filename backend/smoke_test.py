@@ -4,6 +4,10 @@ Needs the server running and seeded data. It creates a few test records;
 run `python -m app.seed` afterwards to reset the database.
 """
 import json
+import os
+from dotenv import load_dotenv
+load_dotenv()
+TOKEN = os.getenv("LOOMSENSE_TOKEN", "")
 import sys
 import urllib.error
 import urllib.request
@@ -25,7 +29,7 @@ def call(method, path, body=None):
         BASE + path,
         method=method,
         data=json.dumps(body).encode() if body is not None else None,
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": "application/json", "Authorization": "Bearer " + TOKEN},
     )
     try:
         with urllib.request.urlopen(req) as res:
@@ -42,6 +46,11 @@ def check(name, method, path, expect=200, body=None, test=None):
     return data
 
 
+if not TOKEN:
+    status, auth = call("POST", "/api/auth/login", {"email": "owner@loomsense.demo", "password": os.getenv("SEED_OWNER_PASSWORD", "")})
+    if status != 200:
+        sys.exit("Set LOOMSENSE_TOKEN or the configured SEED_OWNER_PASSWORD")
+    TOKEN = auth["accessToken"]
 check("health", "GET", "/api/health", test=lambda d: d["database"] == "connected")
 
 # Orders
@@ -130,7 +139,7 @@ with urllib.request.urlopen(BASE + "/api/passport/RL10092/qr") as res:
     png_ok = res.status == 200 and res.read(8) == bytes([137, 80, 78, 71, 13, 10, 26, 10])
 results.append(png_ok)
 print(f"{'PASS' if png_ok else 'FAIL'}  GET   /api/passport/RL10092/qr  -> valid PNG")
-check("buyer track", "GET", "/api/buyer/track/ORD-104", test=lambda d: d["currentStage"] == "Weaving")
+check("buyer track", "GET", "/api/buyer/track/" + call("GET", "/api/orders/ORD104")[1]["trackingToken"], test=lambda d: d["currentStage"] == "Weaving")
 check("buyer track 404", "GET", "/api/buyer/track/ORD999", expect=404)
 check("transaction", "POST", "/api/transactions", 201, {"orderId": "ORD104", "amount": 1000},
       test=lambda d: d["order"]["paidAmount"] >= 1000)

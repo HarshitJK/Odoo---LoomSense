@@ -24,7 +24,7 @@ function mockTracking(orderId) {
 }
 
 export default function BuyerTrackingPage() {
-  const { orderId } = useParams();
+  const { trackingToken: orderId } = useParams();
   const navigate = useNavigate();
 
   const isSearch = !orderId || orderId.toLowerCase() === "search";

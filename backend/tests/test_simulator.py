@@ -112,6 +112,7 @@ def test_simulate_endpoint_validation():
 
 def test_websocket_sends_snapshot_on_connect():
     with client.websocket_connect("/ws/machines") as ws:
+        ws.send_json({"token": client.headers["Authorization"].split()[1]})
         msg = ws.receive_json()
     assert msg["type"] == "snapshot"
     assert len(msg["machines"]) == 6

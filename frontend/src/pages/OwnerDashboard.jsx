@@ -1,3 +1,4 @@
+import MonthEndBooks from "../components/MonthEndBooks.jsx";
 import { DollarSign, TrendingDown, TrendingUp, Percent } from "lucide-react";
 
 import PageHeader from "../components/common/PageHeader.jsx";
@@ -125,6 +126,7 @@ export default function OwnerDashboard() {
       />
 
       <MockBadge />
+      <MonthEndBooks />
       <ApiErrorBanner error={error} onRetry={reloadAll} />
       {loading && (
         <div className="flex items-center justify-center h-32 text-slate-400 text-sm">Loading finance data…</div>
@@ -136,8 +138,8 @@ export default function OwnerDashboard() {
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
             <KpiCard title="Monthly Revenue" value={formatCurrency(kpis.revenue)}        subtitle={d.label}                        icon={DollarSign}  iconColour="text-blue-500"  trend={trendOf(monthly.data, "revenue")} />
             <KpiCard title="Total Cost"      value={formatCurrency(kpis.productionCost)} subtitle="All production costs"           icon={TrendingDown} iconColour="text-amber-500" trend={trendOf(monthly.data, "cost")} />
-            <KpiCard title="Net Profit"      value={formatCurrency(kpis.netProfit)}      subtitle={`Margin: ${kpis.profitMargin}%`} icon={TrendingUp}  iconColour="text-green-500" trend={trendOf(monthly.data, "profit")} />
-            <KpiCard title="Profit Margin"   value={`${kpis.profitMargin}%`}             subtitle={`Target: ${d.targetMargin}%`}   icon={Percent}     iconColour={kpis.profitMargin >= d.targetMargin ? "text-green-500" : "text-amber-500"} />
+            <KpiCard title="Receipts less Incurred Costs"      value={formatCurrency(kpis.netProfit)}      subtitle={`Margin: ${kpis.profitMargin}%`} icon={TrendingUp}  iconColour="text-green-500" trend={trendOf(monthly.data, "profit")} />
+            <KpiCard title="Receipts Surplus %"   value={`${kpis.profitMargin}%`}             subtitle={`Target: ${d.targetMargin}%`}   icon={Percent}     iconColour={kpis.profitMargin >= d.targetMargin ? "text-green-500" : "text-amber-500"} />
           </div>
 
           {/* ── Cost breakdown row ── */}

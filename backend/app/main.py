@@ -2,15 +2,16 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Depends
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from pymongo.errors import PyMongoError
+from pymongo.errors import PyMongoError, DuplicateKeyError
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.services.auth import owner, management, internal
 from app.config import CORS_ORIGINS
 from app.routes import (
-    buyers, demo, finance, health, inventory, machines, orders, quality, transactions, workers,
+    auth, purchases, buyers, demo, finance, health, inventory, machines, orders, quality, transactions, workers,
 )
 from app.services import machine_simulator
 from app.services.costing import OrderNotFound
@@ -40,17 +41,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+app.include_router(purchases.router, prefix="/api/purchases", tags=["purchases"], dependencies=[Depends(owner)])
 app.include_router(health.router, prefix="/api")
-app.include_router(orders.router, prefix="/api/orders", tags=["orders"])
-app.include_router(machines.router, prefix="/api/machines", tags=["machines"])
-app.include_router(inventory.router, prefix="/api/inventory", tags=["inventory"])
-app.include_router(workers.router, prefix="/api/workers", tags=["workers"])
-app.include_router(workers.attendance_router, prefix="/api/attendance", tags=["attendance"])
-app.include_router(quality.router, prefix="/api/quality", tags=["quality"])
+app.include_router(orders.router, dependencies=[Depends(management)], prefix="/api/orders", tags=["orders"])
+app.include_router(machines.router, dependencies=[Depends(management)], prefix="/api/machines", tags=["machines"])
+app.include_router(inventory.router, dependencies=[Depends(management)], prefix="/api/inventory", tags=["inventory"])
+app.include_router(workers.router, dependencies=[Depends(owner)], prefix="/api/workers", tags=["workers"])
+app.include_router(workers.attendance_router, dependencies=[Depends(owner)], prefix="/api/attendance", tags=["attendance"])
+app.include_router(quality.router, dependencies=[Depends(internal)], prefix="/api/quality", tags=["quality"])
 app.include_router(quality.passport_router, prefix="/api/passport", tags=["passport"])
-app.include_router(transactions.router, prefix="/api/transactions", tags=["transactions"])
-app.include_router(demo.router, prefix="/api/demo", tags=["demo"])
-app.include_router(finance.router, prefix="/api/finance", tags=["finance"])
+app.include_router(transactions.router, dependencies=[Depends(owner)], prefix="/api/transactions", tags=["transactions"])
+app.include_router(demo.router, dependencies=[Depends(owner)], prefix="/api/demo", tags=["demo"])
+app.include_router(finance.router, dependencies=[Depends(owner)], prefix="/api/finance", tags=["finance"])
 app.include_router(buyers.router, prefix="/api/buyer", tags=["buyer"])
 app.include_router(machines_ws.router)
 
@@ -81,3 +84,8 @@ def mongo_error(request, exc):
 @app.get("/")
 def root():
     return {"service": "LoomSense API", "docs": "/docs"}
+
+
+@app.exception_handler(DuplicateKeyError)
+def duplicate_key(request, exc):
+    return JSONResponse(status_code=409, content={"detail": "A record with this identifier already exists"})

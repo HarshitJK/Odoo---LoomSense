@@ -1,2 +1,4 @@
 pytest
 httpx
+
+mongomock>=4.3,<5

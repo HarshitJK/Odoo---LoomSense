@@ -1,5 +1,6 @@
 """Print the first five messages from /ws/machines: python ws_check.py [ws_url]"""
 import json
+import os
 import sys
 
 from websockets.sync.client import connect
@@ -7,6 +8,7 @@ from websockets.sync.client import connect
 URL = sys.argv[1] if len(sys.argv) > 1 else "ws://localhost:8000/ws/machines"
 
 with connect(URL) as ws:
+    ws.send(json.dumps({"token": os.environ["LOOMSENSE_TOKEN"]}))
     for i in range(1, 6):
         msg = json.loads(ws.recv())
         if msg["type"] == "event":

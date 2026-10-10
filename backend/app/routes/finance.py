@@ -15,7 +15,13 @@ def finance_dashboard(month: Optional[str] = None):
     month = valid_month(month)
     data = costing.load_data()  # one batch of queries shared by every calculation below
     profits = profitability.all_order_profits(data)
-    summary = profitability.monthly_summary(month, profits)
+    from app.services.month_end import report
+    books = report(month)
+    summary = {"label": profitability.month_label(month), "revenue": books["totalCashIn"],
+        "totalCost": books["totalExpenses"], "profit": books["netCashResult"],
+        "margin": profitability.calculate_margin(books["totalCashIn"], books["netCashResult"]),
+        "costBreakdown": {"rawMaterial": books["rawMaterialBills"], "labour": books["workerWages"],
+            "machine": books["machineOperatingCost"], "rework": books["reworkCost"], "other": books["otherExpenses"]}}
     finished = [p for p in profits if not p["provisional"] and p["revenue"]]
 
     month_payments = [t["amount"] for t in data["transactions"] if (t.get("date") or "").startswith(month)]
@@ -47,7 +53,14 @@ def finance_dashboard(month: Optional[str] = None):
 @router.get("/monthly")
 def finance_monthly():
     """Revenue, cost, profit and margin for each of the last 4 months."""
-    return profitability.monthly_trend()
+    from app.services.month_end import report
+    result = []
+    for month in profitability.last_months():
+        r = report(month)
+        result.append({"month": month, "label": profitability.month_label(month), "revenue": r["totalCashIn"],
+                       "cost": r["totalExpenses"], "profit": r["netCashResult"],
+                       "margin": profitability.calculate_margin(r["totalCashIn"], r["netCashResult"])})
+    return result
 
 
 @router.get("/profit-leakage")
@@ -66,3 +79,31 @@ def finance_profit_leakage(order_id: Optional[str] = None):
 @router.get("/orders/{order_id}")
 def finance_order(order_id: str):
     return profitability.order_profit(order_id.replace("-", "").upper())
+
+
+@router.get("/month-end")
+def month_end(month: str):
+    from app.services.month_end import report
+    return report(month)
+
+
+from datetime import date, datetime, timezone
+from uuid import uuid4
+from pydantic import BaseModel, ConfigDict, Field
+from app import database as dbm
+
+
+class Expense(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False, extra="forbid")
+    description: str = Field(min_length=1)
+    date: date
+    amount: float = Field(gt=0)
+
+
+@router.post("/expenses", status_code=201)
+def add_expense(body: Expense):
+    record = body.model_dump(mode="json")
+    record.update(expenseId="EXP" + uuid4().hex, createdAt=datetime.now(timezone.utc).isoformat())
+    dbm.db.operatingExpenses.insert_one(record)
+    record.pop("_id", None)
+    return record

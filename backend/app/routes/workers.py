@@ -58,6 +58,7 @@ def log_attendance(body: Attendance):
     if not dbm.workers().find_one({"workerId": body.workerId}):
         raise HTTPException(404, f"Worker {body.workerId} not found")
     doc = body.model_dump()
+    doc["hourlyRate"] = dbm.workers().find_one({"workerId": body.workerId})["hourlyRate"]
     doc["date"] = doc["date"] or date.today().isoformat()
     dbm.attendance().insert_one(doc)
     doc.pop("_id", None)

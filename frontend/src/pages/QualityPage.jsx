@@ -1,3 +1,4 @@
+import { useAuth } from "../context/AuthContext.jsx";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { ScanLine } from "lucide-react";
@@ -20,9 +21,11 @@ import DefectCostImpact from "../components/quality/DefectCostImpact.jsx";
 
 export default function QualityPage() {
   const rolls = useApi("/api/quality", { mock: mockRolls, transform: normaliseRolls });
-  const orders = useApi("/api/orders", { mock: mockOrders });
-  const machines = useApi("/api/machines", { mock: mockMachines });
-  const batches = useApi("/api/inventory", { mock: mockInventory });
+  const {user} = useAuth();
+  const options = useApi("/api/quality/options");
+  const orders = {...options, data: options.data?.orders};
+  const machines = {...options, data: options.data?.machines};
+  const batches = {...options, data: options.data?.batches};
 
   // Server result of the last FAILED / REWORK roll: { roll, impact, marginBefore, marginAfter }
   const [lastImpact, setLastImpact] = useState(null);
@@ -35,7 +38,7 @@ export default function QualityPage() {
   const handleSubmitQC = async (body) => {
     const result = await postQualityRoll(body); // throws with the server's message on failure
     const bad = result.roll.status === "FAILED" || result.roll.status === "REWORK";
-    setLastImpact(bad ? result : null);
+    setLastImpact(bad && user.role === "OWNER" ? result : null);
     rolls.reload();
     return result;
   };
