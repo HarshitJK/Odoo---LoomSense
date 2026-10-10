@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException
 
 from app import database as dbm
 from app.models.quality import QualityCheck, QualityCreate
+from app.services import profitability
 from app.utils.ids import next_roll_id
 
 router = APIRouter()
@@ -25,6 +26,8 @@ def create_roll(body: QualityCreate):
     doc = QualityCheck(**data).model_dump()
     dbm.quality_checks().insert_one(doc)
     doc.pop("_id", None)
+    if doc.get("orderId") and dbm.orders().find_one({"orderId": doc["orderId"]}):
+        profitability.refresh_order(doc["orderId"])  # rework cost feeds the order cost
     return doc
 
 

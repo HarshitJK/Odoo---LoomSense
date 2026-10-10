@@ -11,3 +11,6 @@ python run.py                   # http://localhost:8000/docs
 ```
 
 Check: `curl http://localhost:8000/api/health` -> `{"status":"ok","database":"connected"}`
+
+Tests (use a separate `loomsense_test` database): `python -m pytest`
+API smoke test (server running): `python smoke_test.py`

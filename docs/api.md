@@ -26,10 +26,12 @@ Order (also the example for GET one / POST / PATCH response):
 ```json
 {"orderId": "ORD104", "buyerId": "BUY001", "buyerName": "ABC Garments", "fabricType": "Cotton",
  "colour": "Navy Blue", "quantityMeters": 2000.0, "producedMeters": 1460.0, "status": "WEAVING",
- "orderDate": "2026-10-01", "machineId": "W01", "deadline": "2026-10-15T18:00:00", "revenue": 180000.0,
- "costs": {"rawMaterial": 82000.0, "labour": 24500.0, "machine": 18400.0, "rework": 6200.0, "other": 4000.0},
- "profit": 44900.0, "margin": 24.9}
+ "orderDate": "2026-10-01", "machineId": "W01", "deadline": "2026-10-15T18:00:00", "revenue": 356000.0, "yarnBatch": "YB82", "yarnConsumedKg": null, "otherCost": 4000.0,
+ "costs": {"rawMaterial": 155052.0, "labour": 22995.0, "machine": 7821.43, "rework": 0.0, "other": 4000.0},
+ "profit": 166131.57, "margin": 46.7}
 ```
+`costs`, `profit` and `margin` are computed by the server (see Costing below) and re-computed whenever an order is created or patched, or when attendance, quality rolls or machine assignments for it change. Optional inputs: `yarnBatch`, `yarnConsumedKg` (default: 0.59 kg per metre produced), `otherCost`.
+
 POST body example: `{"buyerName": "ABC Garments", "fabricType": "Cotton", "colour": "Navy Blue", "quantityMeters": 2000, "revenue": 180000}`
 PATCH body example: `{"status": "QUALITY_CHECK", "producedMeters": 2000}`
 
@@ -89,7 +91,104 @@ Attendance body and response:
 ```
 `status` is `PASSED`, `FAILED`, `REWORK` or `PENDING`.
 
+
+## Costing and readiness
+
+Formulas (constants live in `backend/app/config.py`):
+- Labour = sum of hoursWorked x hourlyRate + sum of overtimeHours x hourlyRate x 1.5
+- Machine = sum over machines of (hours the machine ran for the order x costPerHour), where hours = producedMeters / productionRate
+- Raw material = yarn kg x costPerKg of the order's yarn batch (yarn kg = 0.59 x metres produced unless `yarnConsumedKg` is set)
+- Rework = sum of reworkCost of the order's quality rolls
+- True cost = rawMaterial + labour + machine + rework + other; Profit = revenue - cost; Margin % = profit / revenue x 100
+- Target margin 25% (`belowTarget`); leakage benchmark margin 28%
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/orders/{order_id}/cost` | Live cost components for one order |
+| GET | `/api/orders/{order_id}/readiness` | Material readiness and projected margin for an existing order |
+| POST | `/api/orders/readiness-check` | Same check for an order that does not exist yet |
+
+`GET /api/orders/ORD104/cost`
+```json
+{"orderId": "ORD104",
+ "costs": {"rawMaterial": 155052.0, "labour": 22995.0, "machine": 7821.43, "rework": 0.0, "other": 4000.0},
+ "totalCost": 189868.43, "labourHours": 223.0, "workerCount": 3, "overtimeCost": 1035.0,
+ "regularLabourCost": 21960.0, "yarnConsumedKg": 861.4, "machineHours": 13.04}
+```
+
+`POST /api/orders/readiness-check` body (all required except `expectedRevenue`, which defaults to 0):
+```json
+{"quantityMeters": 2000, "colour": "Navy Blue", "fabricType": "Cotton", "expectedRevenue": 356000}
+```
+Response (`GET /api/orders/{id}/readiness` is identical, with `orderId` filled in). `status` is `MATERIAL_READY` or `CANNOT_START_FULL_PRODUCTION`; `warning` is `null` when the margin meets the target:
+```json
+{"orderId": null, "requiredYarnKg": 1180.0, "availableKg": 950.0, "shortageKg": 230.0,
+ "status": "CANNOT_START_FULL_PRODUCTION",
+ "projectedMaterialCost": 212400.0, "projectedLabourCost": 34629.46, "projectedMachineCost": 12759.35,
+ "projectedCost": 259788.81, "expectedRevenue": 356000.0, "projectedProfit": 96211.19,
+ "projectedMargin": 27.0, "warning": null, "targetMargin": 25.0}
+```
+Available stock = all inventory whose material is `<fabricType> Yarn` and whose colour matches. Projected labour and machine cost use the average cost per metre of finished orders.
+
+## Finance
+
+Per-order figures use the full contract revenue against the cost so far, so an order still in production has `provisional: true` and a flattering margin. Monthly totals count revenue for in-progress orders pro-rata to `progressPercent`. Orders belong to the month of their `orderDate`.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/finance/dashboard?month=2026-10` | Owner KPIs, cost breakdown, best/worst order, all orders (month defaults to the current month) |
+| GET | `/api/finance/monthly` | Revenue, cost, profit, margin for the last 4 months |
+| GET | `/api/finance/profit-leakage?order_id=ORD091` | Where an order lost profit; without `order_id`, the lowest-margin finished order |
+| GET | `/api/finance/orders/{order_id}` | Revenue, cost lines, profit, margin for one order |
+
+`GET /api/finance/orders/ORD091`
+```json
+{"orderId": "ORD091", "buyerName": "Metro Apparel", "status": "REWORK", "orderDate": "2026-09-15",
+ "revenue": 213000.0,
+ "costs": {"rawMaterial": 120000.0, "labour": 35080.0, "machine": 9285.71, "rework": 8000.0, "other": 4000.0},
+ "totalCost": 176365.71, "profit": 36634.29, "margin": 17.2, "targetMargin": 25.0, "belowTarget": true,
+ "progressPercent": 100.0, "provisional": false, "labourHours": 357.0, "workerCount": 2}
+```
+
+`GET /api/finance/profit-leakage` (ORD091)
+```json
+{"orderId": "ORD091", "buyerName": "Metro Apparel", "expectedMargin": 28.0, "actualMargin": 17.2,
+ "leaks": [{"label": "Excess yarn consumption", "amount": 13800.0}, {"label": "Overtime", "amount": 10200.0},
+           {"label": "Rework", "amount": 8000.0}, {"label": "Extra labour hours", "amount": 7598.74}],
+ "totalLeakage": 39598.74, "machineId": "W03",
+ "recommendation": "Review yarn wastage, reduce overtime and inspect Machine W03."}
+```
+
+`GET /api/finance/monthly` (4 entries; two shown)
+```json
+[{"month": "2026-07", "label": "Jul 2026", "revenue": 270000.0, "cost": 183799.46, "profit": 86200.54, "margin": 31.9},
+ {"month": "2026-10", "label": "Oct 2026", "revenue": 395255.0, "cost": 281870.15, "profit": 113384.85, "margin": 28.7}]
+```
+
+`GET /api/finance/dashboard` (`orders` is a list of the per-order objects above; `mostProfitableOrder` / `leastProfitableOrder` have the same shape and are chosen among finished orders)
+```json
+{"month": "2026-10", "label": "Oct 2026", "targetMargin": 25.0,
+ "kpis": {"revenue": 395255.0, "productionCost": 281870.15, "netProfit": 113384.85, "profitMargin": 28.7,
+          "buyerPayments": 142400.0, "workerWages": 44541.0, "rawMaterialExpense": 229038.0,
+          "machineOperatingCost": 11941.15, "reworkCost": 0.0},
+ "costBreakdown": {"rawMaterial": 229038.0, "labour": 33891.0, "machine": 11941.15, "rework": 0.0, "other": 7000.0},
+ "mostProfitableOrder": {"orderId": "ORD071", "margin": 31.9},
+ "leastProfitableOrder": {"orderId": "ORD091", "margin": 17.2},
+ "orders": []}
+```
+(`workerWages` is wages paid for attendance in the month; `costBreakdown` is the cost attributed to that month's orders. The nested orders are abbreviated here.)
+
+## Wages
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/workers/wages/summary?month=2026-10` | Regular wages, overtime pay, workforce cost and labour cost per order (month defaults to current) |
+
+```json
+{"month": "2026-10", "totalRegularWages": 39480.0, "totalOvertimePay": 5061.0, "totalWorkforceCost": 44541.0,
+ "labourCostPerOrder": [{"orderId": "ORD104", "workersInvolved": 3, "labourHours": 223.0, "labourCost": 22995.0}]}
+```
+
 ## Not implemented yet
-`GET /api/orders/{id}/cost`, `/readiness`, `POST /api/machines/simulate` (501), `GET /api/workers/wages/summary`,
-`GET /api/passport/{roll_id}`, `/api/finance/*` (placeholder only), `GET /api/buyer/track/{order_id}` (placeholder only),
+`POST /api/machines/simulate` (501), `GET /api/passport/{roll_id}`, `GET /api/buyer/track/{order_id}` (placeholder only),
 `WS /ws/machines` (demo feed only).

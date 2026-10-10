@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import CORS_ORIGINS
 from app.routes import buyers, finance, health, inventory, machines, orders, quality, workers
+from app.services.costing import OrderNotFound
 from app.websocket import machines as machines_ws
 
 app = FastAPI(title="LoomSense API")
@@ -27,6 +28,11 @@ app.include_router(quality.router, prefix="/api/quality", tags=["quality"])
 app.include_router(finance.router, prefix="/api/finance", tags=["finance"])
 app.include_router(buyers.router, prefix="/api/buyer", tags=["buyer"])
 app.include_router(machines_ws.router)
+
+
+@app.exception_handler(OrderNotFound)
+def order_not_found(request, exc):
+    return JSONResponse(status_code=404, content={"detail": str(exc)})
 
 
 @app.exception_handler(PyMongoError)

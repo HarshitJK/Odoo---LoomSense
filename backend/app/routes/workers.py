@@ -1,10 +1,12 @@
 from datetime import date
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 
 from app import database as dbm
 from app.models.attendance import Attendance
 from app.models.worker import Worker
+from app.services import costing, profitability
 
 router = APIRouter()
 attendance_router = APIRouter()
@@ -22,6 +24,13 @@ def list_workers():
             {k: latest.get(k) for k in ("orderId", "machineId", "date")} if latest else None
         )
     return workers
+
+
+@router.get("/wages/summary")
+def wages_summary(month: Optional[str] = None):
+    """Regular wages, overtime pay and labour cost per order for a month (default: current)."""
+    month = month or date.today().strftime("%Y-%m")
+    return costing.wages_summary(month)
 
 
 @router.post("", status_code=201)
@@ -42,4 +51,6 @@ def log_attendance(body: Attendance):
     doc["date"] = doc["date"] or date.today().isoformat()
     dbm.attendance().insert_one(doc)
     doc.pop("_id", None)
+    if doc.get("orderId") and dbm.orders().find_one({"orderId": doc["orderId"]}):
+        profitability.refresh_order(doc["orderId"])  # keep order costs in sync
     return doc

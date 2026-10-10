@@ -10,13 +10,17 @@ from app.models.order import Order
 from app.models.quality import QualityCheck
 from app.models.transaction import Transaction
 from app.models.worker import Worker
+from app.services import profitability
+
+REV = {"ORD071": 270000, "ORD078": 295000, "ORD085": 157000, "ORD091": 213000,
+       "ORD104": 356000, "ORD108": 285000}
 
 MACHINES = [
     # id, status, order, rate, produced, target, temp, costPerHour, efficiency
     ("W01", "RUNNING", "ORD104", 112, 1460, 2000, 61.0, 600, 0.91),
-    ("W02", "RUNNING", "ORD108", 105, 760, 1600, 58.5, 580, 0.88),
-    ("W03", "RUNNING", "ORD091", 84, 1090, 1200, 66.2, 650, 0.74),
-    ("W04", "RUNNING", "ORD104", 98, 540, 2000, 60.1, 520, 0.85),
+    ("W02", "RUNNING", "ORD108", 105, 400, 1600, 58.5, 580, 0.88),
+    ("W03", "RUNNING", "ORD091", 84, 1200, 1200, 66.2, 650, 0.74),
+    ("W04", "RUNNING", "ORD108", 98, 360, 1600, 60.1, 520, 0.85),
     ("W05", "IDLE", None, 0, 0, 0, 31.0, 450, 0.0),
     ("W06", "DOWN", None, 0, 0, 0, 28.0, 700, 0.0),
 ]
@@ -37,80 +41,96 @@ WORKERS = [
     ("EMP029", "Arjun Rao", 105, "C"), ("EMP030", "Sunita Yadav", 88, "A"),
 ]
 
-# orderId, buyerId, buyer, fabric, colour, qty, produced, status, machine,
-# deadline, orderDate, revenue, (rawMaterial, labour, machine, rework, other)
-# Margins: ORD071 32% (green), ORD078 23%, ORD085 8% (red), ORD091 17%, ORD104 24.9%, ORD108 27%
+# orderId, buyerId, buyer, fabric, colour, qty, produced, status, machine, deadline, orderDate,
+# revenue, yarnBatch, yarnConsumedKg (None = 0.59 kg/m), otherCost
+# Costs are NOT stored here: they are computed from attendance, machines and quality checks
+# by the costing service (see refresh_order at the end of main()).
 ORDERS = [
     ("ORD071", "BUY004", "Royal Fabrics", "Cotton", "White", 1500, 1500, "DISPATCHED", "W02",
-     "2026-07-30T18:00:00", "2026-07-05", 120000, (46000, 17000, 10600, 1000, 7000)),
+     "2026-07-30T18:00:00", "2026-07-05", REV["ORD071"], "YB83", None, 4000),
     ("ORD078", "BUY002", "Sunrise Textiles", "Cotton", "Red", 1800, 1800, "DISPATCHED", "W01",
-     "2026-08-28T18:00:00", "2026-08-04", 140000, (62000, 24000, 14000, 3800, 4000)),
+     "2026-08-28T18:00:00", "2026-08-04", REV["ORD078"], "YB84", None, 4000),
     ("ORD085", "BUY003", "Metro Apparel", "Polyester", "Black", 1100, 1100, "DISPATCHED", "W03",
-     "2026-09-25T18:00:00", "2026-09-02", 95000, (52000, 20400, 9000, 4000, 2000)),
-    ("ORD091", "BUY003", "Metro Apparel", "Polyester", "Black", 1200, 1090, "REWORK", "W03",
-     "2026-10-08T18:00:00", "2026-09-15", 150000, (68000, 30500, 14000, 8000, 4000)),
+     "2026-09-25T18:00:00", "2026-09-02", REV["ORD085"], "YB85", None, 3000),
+    ("ORD091", "BUY003", "Metro Apparel", "Polyester", "Black", 1200, 1200, "REWORK", "W03",
+     "2026-10-08T18:00:00", "2026-09-15", REV["ORD091"], "YB85", 800, 4000),
     ("ORD104", "BUY001", "ABC Garments", "Cotton", "Navy Blue", 2000, 1460, "WEAVING", "W01",
-     "2026-10-15T18:00:00", "2026-10-01", 180000, (82000, 24500, 18400, 6200, 4000)),
+     "2026-10-15T18:00:00", "2026-10-01", REV["ORD104"], "YB82", None, 4000),
     ("ORD108", "BUY005", "Greenline Exports", "Cotton", "Grey", 1600, 760, "WEAVING", "W02",
-     "2026-10-22T18:00:00", "2026-10-06", 160000, (66000, 22000, 15000, 1800, 12000)),
+     "2026-10-22T18:00:00", "2026-10-06", REV["ORD108"], "YB86", None, 3000),
 ]
 
 # rollId, orderId, buyer, machine, yarnBatch, shift, status, defects, reworkCost, date
 QUALITY = [
-    ("RL10092", "ORD104", "ABC Garments", "W01", "YB82", "B", "PASSED", [], 0, "2026-10-08"),
-    ("RL10093", "ORD104", "ABC Garments", "W04", "YB82", "A", "PASSED", [], 0, "2026-10-09"),
+    ("RL10005", "ORD071", "Royal Fabrics", "W02", "YB83", "A", "PASSED", [], 0, "2026-07-24"),
+    ("RL10031", "ORD078", "Sunrise Textiles", "W01", "YB84", "B", "REWORK",
+     ["Shade variation"], 3800, "2026-08-22"),
+    ("RL10061", "ORD085", "Metro Apparel", "W03", "YB85", "A", "PASSED", [], 0, "2026-09-18"),
     ("RL10088", "ORD091", "Metro Apparel", "W03", "YB85", "C", "FAILED",
      ["Weft break", "Uneven tension"], 4180, "2026-10-03"),
     ("RL10089", "ORD091", "Metro Apparel", "W03", "YB85", "C", "REWORK",
      ["Colour patch"], 3820, "2026-10-05"),
-    ("RL10061", "ORD085", "Metro Apparel", "W03", "YB85", "A", "PASSED", [], 0, "2026-09-20"),
+    ("RL10092", "ORD104", "ABC Garments", "W01", "YB82", "B", "PASSED", [], 0, "2026-10-08"),
+    ("RL10093", "ORD104", "ABC Garments", "W01", "YB82", "A", "PASSED", [], 0, "2026-10-09"),
 ]
 
-TRANSACTIONS = [
-    ("TXN001", "BUYER_PAYMENT", "ORD071", 120000, "2026-07-28"),
-    ("TXN002", "BUYER_PAYMENT", "ORD078", 140000, "2026-08-30"),
-    ("TXN003", "BUYER_PAYMENT", "ORD085", 95000, "2026-09-27"),
-    ("TXN004", "BUYER_PAYMENT", "ORD091", 75000, "2026-09-30"),
-    ("TXN005", "BUYER_PAYMENT", "ORD104", 90000, "2026-10-02"),
-    ("TXN006", "SUPPLIER_PAYMENT", None, 46000, "2026-07-10"),
-    ("TXN007", "SUPPLIER_PAYMENT", None, 62000, "2026-08-08"),
-    ("TXN008", "SUPPLIER_PAYMENT", None, 90000, "2026-09-12"),
+# Share of the order revenue the buyer has paid so far
+PAID = {"ORD071": 1.0, "ORD078": 1.0, "ORD085": 1.0, "ORD091": 0.5, "ORD104": 0.4}
+PAYMENT_DATES = {"ORD071": "2026-07-28", "ORD078": "2026-08-30", "ORD085": "2026-09-27",
+                 "ORD091": "2026-09-30", "ORD104": "2026-10-02"}
+
+SUPPLIER_PAYMENTS = [
+    ("SUPPLIER_PAYMENT", 90000, "2026-07-10"),
+    ("SUPPLIER_PAYMENT", 120000, "2026-08-08"),
+    ("SUPPLIER_PAYMENT", 140000, "2026-09-12"),
 ]
 
-# Workers are assigned round-robin to these (machine, order) pairs
-ASSIGN = [("W01", "ORD104"), ("W04", "ORD104"), ("W02", "ORD108"), ("W03", "ORD091")]
+# Work blocks: orderId, machine, first day, last day, worker indexes, overtime choices.
+# One attendance record (8 h) per worker per working day (Sundays skipped).
+WORK = [
+    ("ORD071", "W02", "2026-07-06", "2026-07-21", [1, 2], [0, 0, 0.5, 1]),
+    ("ORD078", "W01", "2026-08-05", "2026-08-24", [0, 5], [0, 0, 0.5, 1]),
+    ("ORD085", "W03", "2026-09-02", "2026-09-15", [2, 6], [0, 0, 0.5, 1]),
+    ("ORD091", "W03", "2026-09-16", "2026-09-30", [3, 7], [1, 2, 2, 3]),
+    ("ORD091", "W03", "2026-10-01", "2026-10-10", [3], [2, 2, 3]),
+    ("ORD104", "W01", "2026-10-01", "2026-10-10", [0, 4, 8], [0, 0, 0.5, 1]),
+    ("ORD108", "W02", "2026-10-06", "2026-10-10", [1, 5, 9], [0, 0, 0.5, 1]),
+]
 
 
 def build_orders():
-    docs = []
-    for o in ORDERS:
-        raw, labour, machine, rework, other = o[12]
-        revenue = o[11]
-        profit = revenue - (raw + labour + machine + rework + other)
-        docs.append(Order(
-            orderId=o[0], buyerId=o[1], buyerName=o[2], fabricType=o[3], colour=o[4],
-            quantityMeters=o[5], producedMeters=o[6], status=o[7], machineId=o[8],
-            deadline=o[9], orderDate=o[10], revenue=revenue,
-            costs=dict(rawMaterial=raw, labour=labour, machine=machine, rework=rework, other=other),
-            profit=profit, margin=round(profit / revenue * 100, 1),
-        ).model_dump())
-    return docs
+    return [Order(
+        orderId=o[0], buyerId=o[1], buyerName=o[2], fabricType=o[3], colour=o[4],
+        quantityMeters=o[5], producedMeters=o[6], status=o[7], machineId=o[8],
+        deadline=o[9], orderDate=o[10], revenue=o[11], yarnBatch=o[12],
+        yarnConsumedKg=o[13], otherCost=o[14],
+    ).model_dump() for o in ORDERS]
 
 
 def build_attendance():
     rng = random.Random(42)  # fixed seed so every run gives the same data
     docs = []
-    day = date(2026, 10, 1)
-    while day <= date(2026, 10, 10):
-        if day.weekday() != 6:  # skip Sundays
-            for i, w in enumerate(WORKERS):
-                machine, order = ASSIGN[i % len(ASSIGN)]
-                docs.append(Attendance(
-                    workerId=w[0], orderId=order, machineId=machine, hoursWorked=8,
-                    overtimeHours=rng.choice([0, 0, 0.5, 1, 2]), date=day.isoformat(),
-                ).model_dump())
-        day += timedelta(days=1)
+    for order_id, machine, first, last, worker_idx, overtime in WORK:
+        day = date.fromisoformat(first)
+        while day <= date.fromisoformat(last):
+            if day.weekday() != 6:  # skip Sundays
+                for i in worker_idx:
+                    docs.append(Attendance(
+                        workerId=WORKERS[i][0], orderId=order_id, machineId=machine,
+                        hoursWorked=8, overtimeHours=rng.choice(overtime), date=day.isoformat(),
+                    ).model_dump())
+            day += timedelta(days=1)
     return docs
+
+
+def build_transactions():
+    revenue = {o[0]: o[11] for o in ORDERS}
+    docs = [("BUYER_PAYMENT", order_id, round(revenue[order_id] * share), PAYMENT_DATES[order_id])
+            for order_id, share in PAID.items()]
+    docs += [(kind, None, amount, day) for kind, amount, day in SUPPLIER_PAYMENTS]
+    return [Transaction(transactionId=f"TXN{i:03d}", type=kind, orderId=order_id,
+                        amount=amount, date=day).model_dump()
+            for i, (kind, order_id, amount, day) in enumerate(docs, start=1)]
 
 
 def main():
@@ -133,14 +153,17 @@ def main():
             rollId=q[0], orderId=q[1], buyerName=q[2], machineId=q[3], yarnBatch=q[4],
             shift=q[5], status=q[6], defects=q[7], reworkCost=q[8],
             date=q[9]).model_dump() for q in QUALITY],
-        dbm.transactions(): [Transaction(
-            transactionId=t[0], type=t[1], orderId=t[2], amount=t[3],
-            date=t[4]).model_dump() for t in TRANSACTIONS],
+        dbm.transactions(): build_transactions(),
     }
     for coll, docs in data.items():
         coll.delete_many({})
         coll.insert_many(docs)
         print(f"{coll.name}: {len(docs)} inserted")
+
+    # Compute costs, profit and margin from the operational data and store them on each order
+    for o in ORDERS:
+        p = profitability.refresh_order(o[0])
+        print(f"  {o[0]}: revenue {p['revenue']:,.0f}  cost {p['totalCost']:,.0f}  margin {p['margin']}%")
 
 
 if __name__ == "__main__":

@@ -24,6 +24,9 @@ class Order(BaseModel):
     machineId: Optional[str] = None
     deadline: Optional[str] = None
     revenue: float = 0
+    yarnBatch: Optional[str] = None  # batchId of the yarn used
+    yarnConsumedKg: Optional[float] = None  # actual kg used; default = 0.59 x producedMeters
+    otherCost: float = 0  # other production cost in INR
     costs: OrderCosts = OrderCosts()
     profit: Optional[float] = None
     margin: Optional[float] = None
@@ -39,6 +42,8 @@ class OrderCreate(BaseModel):
     machineId: Optional[str] = None
     deadline: Optional[str] = None
     revenue: float = 0
+    yarnBatch: Optional[str] = None
+    otherCost: float = 0
     status: str = "NEW"
 
 
@@ -54,4 +59,14 @@ class OrderUpdate(BaseModel):
     machineId: Optional[str] = None
     deadline: Optional[str] = None
     revenue: Optional[float] = None
-    costs: Optional[OrderCosts] = None
+    yarnBatch: Optional[str] = None
+    yarnConsumedKg: Optional[float] = None
+    otherCost: Optional[float] = None
+
+
+class ReadinessRequest(BaseModel):
+    """Body for POST /api/orders/readiness-check (order does not need to exist)."""
+    quantityMeters: float
+    colour: str
+    fabricType: str
+    expectedRevenue: float = 0

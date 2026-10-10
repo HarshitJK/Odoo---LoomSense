@@ -18,3 +18,9 @@ CORS_ORIGINS = [
     for o in os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")
     if o.strip()
 ]
+
+# Costing constants (see context.md section 10)
+YARN_KG_PER_METRE = 0.59      # 2000 m of fabric needs 1180 kg of yarn
+OVERTIME_MULTIPLIER = 1.5     # overtime hours are paid at 1.5x the hourly rate
+TARGET_MARGIN = 25.0          # factory target margin %, used for warnings and belowTarget
+EXPECTED_MARGIN = 28.0        # benchmark margin % used by profit leakage

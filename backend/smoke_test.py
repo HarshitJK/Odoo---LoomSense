@@ -96,5 +96,26 @@ check("quality create", "POST", "/api/quality", 201,
       test=lambda d: d["rollId"].startswith("RL"))
 check("quality newest first", "GET", "/api/quality", test=lambda d: d[0]["date"] >= d[-1]["date"])
 
+# Costing, readiness, finance (Phase 3)
+check("order cost", "GET", "/api/orders/ORD104/cost",
+      test=lambda d: d["totalCost"] == round(sum(d["costs"].values()), 2) and d["workerCount"] >= 3)
+check("order readiness", "GET", "/api/orders/ORD104/readiness",
+      test=lambda d: d["shortageKg"] == 230 and d["status"] == "CANNOT_START_FULL_PRODUCTION")
+check("readiness 404", "GET", "/api/orders/NOPE/readiness", expect=404)
+check("readiness check", "POST", "/api/orders/readiness-check", 200,
+      {"quantityMeters": 2000, "colour": "Navy Blue", "fabricType": "Cotton", "expectedRevenue": 356000},
+      test=lambda d: d["requiredYarnKg"] == 1180 and d["projectedCost"] > 0)
+check("readiness check 422", "POST", "/api/orders/readiness-check", 422, {"colour": "x"})
+check("finance dashboard", "GET", "/api/finance/dashboard",
+      test=lambda d: d["kpis"]["revenue"] > 0 and d["mostProfitableOrder"] and len(d["orders"]) >= 6)
+check("finance monthly", "GET", "/api/finance/monthly", test=lambda d: len(d) == 4)
+check("profit leakage", "GET", "/api/finance/profit-leakage",
+      test=lambda d: d["orderId"] == "ORD091" and len(d["leaks"]) >= 3)
+check("profit leakage by id", "GET", "/api/finance/profit-leakage?order_id=ORD104")
+check("finance order", "GET", "/api/finance/orders/ORD091", test=lambda d: d["belowTarget"] is True)
+check("finance order 404", "GET", "/api/finance/orders/NOPE", expect=404)
+check("wages summary", "GET", "/api/workers/wages/summary?month=2026-10",
+      test=lambda d: d["totalWorkforceCost"] > 0 and len(d["labourCostPerOrder"]) >= 3)
+
 print(f"\n{sum(results)}/{len(results)} passed")
 sys.exit(0 if all(results) else 1)
