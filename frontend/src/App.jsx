@@ -20,7 +20,7 @@ export default function App() {
       {/* Standalone pages (no sidebar) so they work as shareable links */}
       <Route path="/passport/:rollId" element={<FabricPassportPage />} />
       <Route path="/track" element={<BuyerTrackingPage />} />
-      <Route path="/track/:trackingToken" element={<BuyerTrackingPage />} />
+      <Route path="/track/:token" element={<BuyerTrackingPage />} />
       <Route path="/scan" element={<ScannerPage />} />
 
       {/* Internal pages inside the main layout */}

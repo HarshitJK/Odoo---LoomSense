@@ -1,6 +1,6 @@
 import { useAuth } from "../../context/AuthContext.jsx";
 import { NavLink } from "react-router-dom";
-import { LayoutDashboard, ClipboardList, Boxes, Factory, Users, ShieldCheck, Truck, ScanLine } from "lucide-react";
+import { LayoutDashboard, ClipboardList, Boxes, Factory, Users, ShieldCheck, ScanLine } from "lucide-react";
 
 const links = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -9,13 +9,12 @@ const links = [
   { to: "/production", label: "Production", icon: Factory },
   { to: "/workers", label: "Workers", icon: Users },
   { to: "/quality", label: "Quality", icon: ShieldCheck },
-  { to: "/track", label: "Buyer Tracking", icon: Truck },
   { to: "/scan", label: "Scan QR", icon: ScanLine },
 ];
 
 export default function Sidebar() {
   const { user, logout } = useAuth();
-  const allowed = user?.role === "OWNER" ? links : links.filter(l => (user?.role === "PRODUCTION_MANAGER" ? ["/orders", "/inventory", "/production", "/quality", "/track", "/scan"] : ["/quality", "/scan"]).includes(l.to));
+  const allowed = user?.role === "OWNER" ? links : links.filter(l => (user?.role === "PRODUCTION_MANAGER" ? ["/orders", "/inventory", "/production", "/quality", "/scan"] : ["/quality", "/scan"]).includes(l.to));
   return (
     <aside className="hidden w-60 shrink-0 bg-slate-900 text-slate-200 md:block">
       <div className="px-6 py-5 text-xl font-bold tracking-wide text-white">LoomSense</div>

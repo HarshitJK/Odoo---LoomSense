@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
 import PageHeader from "../components/common/PageHeader.jsx";
 import ApiErrorBanner from "../components/common/ApiErrorBanner.jsx";
 import ReadinessResult from "../components/orders/ReadinessResult.jsx";
+import BuyerLink from "../components/orders/BuyerLink.jsx";
 import useApi from "../hooks/useApi.js";
 import client from "../api/client.js";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -26,7 +26,7 @@ export default function OrdersPage() {
       {form&&<form onSubmit={e=>{e.preventDefault();check();}} className="space-y-4"><div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">{[["buyerName","Buyer","text"],["fabricType","Fabric type","text"],["colour","Colour","text"],["quantityMeters","Required metres","number"],["revenue","Expected revenue ₹","number"],["deadline","Deadline","date"]].map(([k,label,type])=><label key={k} className="text-sm">{label}<input required className={input} type={type} min={k==="quantityMeters"?1:0} value={form[k]} onChange={e=>{setForm({...form,[k]:e.target.value});setReadiness(null);}}/></label>)}</div><button disabled={busy} className={button}>Check readiness before acceptance</button></form>}
       <ReadinessResult result={readiness}/>
       {form&&readiness&&<button disabled={busy} className={button} onClick={()=>run(async()=>{await client.post("/api/orders",{...form,quantityMeters:Number(form.quantityMeters),revenue:Number(form.revenue)});setForm(null);setReadiness(null);orders.reload();})}>Accept & Create Order</button>}
-      {selected&&<><Link className="text-blue-700 underline" to={`/track/${selected.trackingToken}`} target="_blank">Open secure buyer tracking</Link>
+      {selected&&<><BuyerLink order={selected} onChange={o=>{setSelected(o);orders.reload();}}/>
         <form className="flex flex-wrap gap-3" onSubmit={e=>{e.preventDefault();run(async()=>{await client.post(`/api/orders/${selected.orderId}/reserve`,{batchId:batch,quantityKg:Number(reserveKg)});batches.reload();setReserveKg("");setReadiness((await client.get(`/api/orders/${selected.orderId}/readiness`)).data);});}}><label>Yarn batch<select required className={input} value={batch} onChange={e=>setBatch(e.target.value)}><option value="">Choose matching yarn</option>{batches.data?.map(b=><option key={b.batchId} value={b.batchId}>{b.batchId} · {b.material} · {b.colour}</option>)}</select></label><label>Reserve kg<input required type="number" min="0.01" step="0.01" className={input} value={reserveKg} onChange={e=>setReserveKg(e.target.value)}/></label><button disabled={busy} className={button}>Reserve material</button></form>
         <form className="flex gap-3" onSubmit={e=>{e.preventDefault();run(async()=>{await client.patch(`/api/machines/${machine}`,{currentOrderId:selected.orderId,status:"RUNNING",productionRate:100});machines.reload();orders.reload();});}}><label>Assign production machine<select required className={input} value={machine} onChange={e=>setMachine(e.target.value)}><option value="">Choose idle machine</option>{machines.data?.filter(m=>m.status==="IDLE").map(m=><option key={m.machineId} value={m.machineId}>{m.name}</option>)}</select></label><button disabled={busy} className={button}>Assign & Start</button></form>
         <label className="block text-sm">Order stage<select className={input} value={selected.status} disabled={busy} onChange={e=>run(async()=>{const r=await client.patch(`/api/orders/${selected.orderId}`,{status:e.target.value});setSelected(r.data);orders.reload();})}>{[...new Set([selected.status,"NEW","SPINNING","WEAVING","DYEING","QUALITY_CHECK","REWORK","READY_FOR_DISPATCH","DISPATCHED"])].map(s=><option key={s}>{s}</option>)}</select></label>

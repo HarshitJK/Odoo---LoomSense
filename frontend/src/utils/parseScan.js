@@ -2,7 +2,8 @@
 //
 //   parseScan("http://192.168.1.20:5173/passport/RL10092?x=1") -> { type: "passport", id: "RL10092" }
 //   parseScan("rl-10092")                                      -> { type: "passport", id: "RL10092" }
-//   parseScan("ORD-104")                                       -> { type: "track",    id: "ORD104" }
+//   parseScan("https://x.test/track/aB3_xY...")                -> { type: "track",    id: "aB3_xY..." } (token kept exactly)
+//   parseScan("ORD-104")                                       -> { type: "unknown" } (order ids are not tracking codes)
 //   parseScan("hello")                                         -> { type: "unknown" }
 //
 // For URLs only the path counts, never the origin: a QR printed with one host (localhost, a LAN IP
@@ -11,6 +12,8 @@
 const UNKNOWN = { type: "unknown" };
 const ROUTE_IN_PATH = /\/(passport|track)\/([^/?#\s]+)\/?$/i;
 const ID_OK = /^[A-Za-z0-9_-]{1,128}$/;
+// Private tracking tokens are random and at least 22 characters; case is significant.
+const TOKEN_OK = /^[A-Za-z0-9_-]{22,128}$/;
 
 /** "rl-10092" -> "RL10092" */
 export function normaliseId(id) {
@@ -52,13 +55,12 @@ export function parseScan(input) {
       return UNKNOWN;
     }
     if (!ID_OK.test(id)) return UNKNOWN;
-    const type = match[1].toLowerCase() === "passport" ? "passport" : "track";
-    return { type, id: type === "passport" ? normaliseId(id) : id };
+    if (match[1].toLowerCase() === "passport") return { type: "passport", id: normaliseId(id) };
+    return TOKEN_OK.test(id) ? { type: "track", id } : UNKNOWN; // /track/ORD104 is not a valid link
   }
 
   if (/^RL-?\d+$/i.test(text)) return { type: "passport", id: normaliseId(text) };
-  if (/^[A-Za-z0-9_-]{43}$/.test(text)) return { type: "track", id: text };
-  if (/^ORD-?\d+$/i.test(text)) return { type: "track", id: normaliseId(text) };
+  if (TOKEN_OK.test(text)) return { type: "track", id: text };
   return UNKNOWN;
 }
 

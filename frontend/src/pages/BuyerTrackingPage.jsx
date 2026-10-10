@@ -1,111 +1,109 @@
-import { useParams, useNavigate } from "react-router-dom";
-import useApi from "../hooks/useApi.js";
-import ApiErrorBanner from "../components/common/ApiErrorBanner.jsx";
-import MockBadge from "../components/common/MockBadge.jsx";
-import TrackSearchCard from "../components/buyer/TrackSearchCard.jsx";
+import { useCallback, useEffect, useState } from "react";
+import { useParams } from "react-router-dom";
+import { Loader2, Link2Off, WifiOff, RefreshCw } from "lucide-react";
+import { publicClient } from "../api/client.js";
 import OrderSummaryCard from "../components/buyer/OrderSummaryCard.jsx";
-import { SearchX, ArrowLeft, Loader2 } from "lucide-react";
 
-// Only used when VITE_USE_MOCKS=true: the mock has plain stage names, the API has { name, state }
-import { getTrackingByOrderId } from "../mocks/buyerTracking.js";
+const page = "min-h-screen bg-slate-100 py-10 px-4 flex flex-col items-center justify-center";
+const panel = "w-full max-w-md bg-white rounded-2xl shadow-sm border border-slate-200 p-6 sm:p-8 text-center space-y-4";
 
-function mockTracking(orderId) {
-  const order = getTrackingByOrderId(orderId);
-  if (!order) return null;
-  const current = order.stages.indexOf(order.currentStage);
-  return {
-    ...order,
-    stages: order.stages.map((name, i) => ({
-      name,
-      state: i < current ? "DONE" : i === current ? "IN_PROGRESS" : "PENDING",
-      ...(i === current && { progress: order.progress }),
-    })),
-  };
+/** Keeps search engines away from private tracking pages while the page is shown. */
+function useNoIndex() {
+  useEffect(() => {
+    const meta = document.createElement("meta");
+    meta.name = "robots";
+    meta.content = "noindex";
+    document.head.appendChild(meta);
+    return () => meta.remove();
+  }, []);
 }
 
+/**
+ * Public, read-only buyer page reached through the private link /track/:token.
+ * The token is used exactly as it appears in the URL (no trimming, no case change).
+ * There is no login and no link to any internal page.
+ */
 export default function BuyerTrackingPage() {
-  const { trackingToken: orderId } = useParams();
-  const navigate = useNavigate();
+  const { token } = useParams();
+  const [state, setState] = useState({ status: token ? "loading" : "idle", order: null });
+  useNoIndex();
 
-  const isSearch = !orderId || orderId.toLowerCase() === "search";
+  const load = useCallback(() => {
+    if (!token) return undefined;
+    let cancelled = false;
+    setState({ status: "loading", order: null });
+    publicClient
+      .get(`/api/buyer/track/${encodeURIComponent(token)}`)
+      .then((res) => !cancelled && setState({ status: "ok", order: res.data }))
+      .catch((err) => {
+        if (cancelled) return;
+        // 404 = unknown, malformed or replaced token; anything else is a temporary problem
+        setState({ status: err.response?.status === 404 ? "invalid" : "error", order: null });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
 
-  // Public, buyer-safe endpoint: GET /api/buyer/track/{orderId} (ORD104 and ORD-104 both work)
-  const { data: order, loading, error, reload } = useApi(
-    `/api/buyer/track/${encodeURIComponent(orderId ?? "")}`,
-    { enabled: !isSearch, mock: () => mockTracking(orderId) }
-  );
+  useEffect(() => load(), [load]);
 
-  // 1. Search Screen: Shown when no orderId param is present or when accessing /track/search
-  if (isSearch) {
+  if (!token) {
     return (
-      <div className="min-h-screen bg-slate-100 py-10 px-4 flex flex-col items-center justify-center">
-        <TrackSearchCard />
-      </div>
-    );
-  }
-
-  // 2. Loading
-  if (loading && !order && !error) {
-    return (
-      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
-        <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
-      </div>
-    );
-  }
-
-  // 3. Server or network problem (not a 404): show the error with Retry
-  if (error && error.status !== 404) {
-    return (
-      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
-        <div className="w-full max-w-md">
-          <ApiErrorBanner error={error} onRetry={reload} />
+      <div className={page}>
+        <div className={panel}>
+          <h1 className="text-lg font-bold text-slate-900">Order tracking</h1>
+          <p className="text-sm text-slate-500">
+            Tracking is available through the private link supplied by your supplier. Please open that link to see your order.
+          </p>
         </div>
       </div>
     );
   }
 
-  // 4. Not Found Screen
-  if (!order) {
+  if (state.status === "loading") {
     return (
-      <div className="min-h-screen bg-slate-100 py-10 px-4 flex flex-col items-center justify-center">
-        <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-slate-200 p-6 sm:p-8 text-center space-y-5">
-          <div className="mx-auto w-12 h-12 bg-amber-50 text-amber-600 rounded-full flex items-center justify-center">
-            <SearchX className="w-6 h-6" />
-          </div>
+      <div className={page}>
+        <Loader2 className="h-8 w-8 animate-spin text-blue-600" aria-label="Loading" />
+      </div>
+    );
+  }
 
-          <div>
-            <h2 className="text-lg font-bold text-slate-900">Tracking ID Not Found</h2>
-            <p className="text-xs text-slate-500 mt-2 leading-relaxed">
-              We couldn&apos;t find that tracking ID. Please check and try again.
-            </p>
-            <p className="mt-1 font-mono text-xs font-semibold text-slate-700 bg-slate-50 py-1 px-2 rounded inline-block">
-              {orderId}
-            </p>
-          </div>
-
-          <div className="pt-2">
-            <button
-              type="button"
-              onClick={() => navigate("/track")}
-              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl shadow-sm transition-colors cursor-pointer"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              Return to Search
-            </button>
-          </div>
+  if (state.status === "invalid") {
+    return (
+      <div className={page}>
+        <div className={panel}>
+          <Link2Off className="mx-auto h-8 w-8 text-amber-600" />
+          <h1 className="text-lg font-bold text-slate-900">Tracking link not valid</h1>
+          <p className="text-sm text-slate-500">
+            This tracking link is not valid or has been replaced. Please contact your supplier.
+          </p>
         </div>
       </div>
     );
   }
 
-  // 5. Order Tracking Result Screen
+  if (state.status === "error") {
+    return (
+      <div className={page}>
+        <div className={panel}>
+          <WifiOff className="mx-auto h-8 w-8 text-slate-500" />
+          <h1 className="text-lg font-bold text-slate-900">Could not load your order</h1>
+          <p className="text-sm text-slate-500">We could not reach the server. Check your connection and try again.</p>
+          <button
+            type="button"
+            onClick={load}
+            className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+          >
+            <RefreshCw className="h-4 w-4" /> Try again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-slate-100 py-8 px-4 flex flex-col items-center justify-center gap-3">
-      <MockBadge />
-      <OrderSummaryCard
-        order={order}
-        onTrackAnother={() => navigate("/track")}
-      />
+    <div className={`${page} gap-3`}>
+      <OrderSummaryCard order={state.order} />
     </div>
   );
 }

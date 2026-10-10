@@ -13,4 +13,7 @@ client.interceptors.response.use(r => r, error => {
   if (error.response?.status === 401 && !error.config.url.includes("/auth/login")) window.dispatchEvent(new Event("session-expired"));
   return Promise.reject(error);
 });
+
+/** For public pages (buyer tracking): never sends the manager session token, never triggers the login redirect. */
+export const publicClient = axios.create({ baseURL: API_URL });
 export default client;

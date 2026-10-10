@@ -1,7 +1,7 @@
 import { Check, CircleDot, Circle } from "lucide-react";
 
 /**
- * stages: [{ name, state: "DONE" | "IN_PROGRESS" | "PENDING", progress? }] from GET /api/buyer/track/{id}.
+ * stages: [{ name, state: "DONE" | "IN_PROGRESS" | "PENDING", progress? }] from GET /api/buyer/track/{token}.
  * Only the Weaving stage carries its own `progress`; other in-progress stages show no percentage.
  */
 export default function TrackingTimeline({ stages = [] }) {

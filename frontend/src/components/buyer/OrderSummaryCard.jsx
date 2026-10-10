@@ -1,8 +1,7 @@
-import { Link } from "react-router-dom";
 import ProgressBar from "./ProgressBar.jsx";
 import StatusBadge from "./StatusBadge.jsx";
 import TrackingTimeline from "./TrackingTimeline.jsx";
-import { Calendar, Package, ArrowLeft, Building2 } from "lucide-react";
+import { Calendar, Package, Building2 } from "lucide-react";
 
 function formatCompletionDate(dateStr) {
   if (!dateStr) return "N/A";
@@ -21,7 +20,7 @@ function formatCompletionDate(dateStr) {
   }
 }
 
-export default function OrderSummaryCard({ order, onTrackAnother }) {
+export default function OrderSummaryCard({ order }) {
   if (!order) return null;
 
   return (
@@ -93,15 +92,7 @@ export default function OrderSummaryCard({ order, onTrackAnother }) {
       </div>
 
       {/* Footer Navigation */}
-      <div className="pt-4 border-t border-slate-100 flex items-center justify-between text-xs">
-        <button
-          type="button"
-          onClick={onTrackAnother}
-          className="inline-flex items-center gap-1.5 font-semibold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
-        >
-          <ArrowLeft className="w-3.5 h-3.5" />
-          Track another order
-        </button>
+      <div className="pt-4 border-t border-slate-100 flex items-center justify-end text-xs">
 
         <span className="text-slate-400 text-[11px]">
           LoomSense Buyer Transparency

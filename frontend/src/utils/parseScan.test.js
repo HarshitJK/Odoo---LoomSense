@@ -4,31 +4,32 @@ import { parseScan, routeFor } from "./parseScan.js";
 const passport = (id) => ({ type: "passport", id });
 const track = (id) => ({ type: "track", id });
 const unknown = { type: "unknown" };
+const T22 = "aB3_xY-9kLmN0pQrStUvWz"; // 22 characters, like a real token
 
 describe("parseScan: full URLs (only the path counts)", () => {
   it("accepts any origin", () => {
     expect(parseScan("http://localhost:5173/passport/RL10092")).toEqual(passport("RL10092"));
     expect(parseScan("http://192.168.1.20:5173/passport/RL10092")).toEqual(passport("RL10092"));
     expect(parseScan("https://loomsense.example.com/passport/RL10092")).toEqual(passport("RL10092"));
-    expect(parseScan("https://loomsense.example.com/track/ORD104")).toEqual(track("ORD104"));
+    expect(parseScan(`https://loomsense.example.com/track/${T22}`)).toEqual(track(T22));
   });
 
   it("ignores trailing slashes, query strings and fragments", () => {
     expect(parseScan("http://x.test/passport/RL10092/")).toEqual(passport("RL10092"));
     expect(parseScan("http://x.test/passport/RL10092?utm=1&a=b")).toEqual(passport("RL10092"));
     expect(parseScan("http://x.test/passport/RL10092/?a=1#top")).toEqual(passport("RL10092"));
-    expect(parseScan("http://x.test/track/ORD104#x")).toEqual(track("ORD104"));
+    expect(parseScan(`http://x.test/track/${T22}#x`)).toEqual(track(T22));
   });
 
   it("normalises hyphens and case in the id", () => {
     expect(parseScan("http://x.test/passport/rl-10092")).toEqual(passport("RL10092"));
-    expect(parseScan("http://x.test/track/ord-104")).toEqual(track("ord-104"));
+    expect(parseScan(`http://x.test/track/${T22}`)).toEqual(track(T22)); // case is kept for tracking tokens
   });
 
   it("accepts a path prefix, a scheme-less URL and a bare path", () => {
     expect(parseScan("https://x.test/app/passport/RL10092")).toEqual(passport("RL10092"));
     expect(parseScan("192.168.1.20:5173/passport/RL10092")).toEqual(passport("RL10092"));
-    expect(parseScan("localhost:5173/track/ORD104")).toEqual(track("ORD104"));
+    expect(parseScan(`localhost:5173/track/${T22}`)).toEqual(track(T22));
     expect(parseScan("/passport/RL10092")).toEqual(passport("RL10092"));
   });
 
@@ -54,10 +55,16 @@ describe("parseScan: bare ids", () => {
     expect(parseScan(" rl-10092 ")).toEqual(passport("RL10092"));
   });
 
-  it("accepts order ids", () => {
-    expect(parseScan("ORD104")).toEqual(track("ORD104"));
-    expect(parseScan("ORD-104")).toEqual(track("ORD104"));
-    expect(parseScan("ord-104")).toEqual(track("ORD104"));
+  it("accepts a bare tracking token and keeps its case", () => {
+    expect(parseScan(T22)).toEqual(track(T22));
+    expect(parseScan(` ${T22}
+`)).toEqual(track(T22));
+  });
+
+  it("no longer treats order ids as tracking codes", () => {
+    for (const id of ["ORD104", "ORD-104", "ord-104", "https://x.test/track/ORD104", "/track/ord-104"]) {
+      expect(parseScan(id)).toEqual(unknown);
+    }
   });
 });
 
@@ -73,7 +80,7 @@ describe("parseScan: unknown input", () => {
 describe("routeFor", () => {
   it("maps results to internal routes", () => {
     expect(routeFor(passport("RL10092"))).toBe("/passport/RL10092");
-    expect(routeFor(track("ORD104"))).toBe("/track/ORD104");
+    expect(routeFor(track(T22))).toBe(`/track/${T22}`);
     expect(routeFor(unknown)).toBeNull();
   });
 });
@@ -83,4 +90,5 @@ it("preserves case and punctuation in secure tracking tokens", () => {
   const token = "aB_cD-eF" + "x".repeat(35);
   expect(parseScan(`https://mill.test/track/${token}`)).toEqual({type:"track",id:token});
   expect(parseScan(token)).toEqual({type:"track",id:token});
+  expect(parseScan(`https://mill.test/track/${token.slice(0, 21)}`)).toEqual(unknown); // too short to be a token
 });
