@@ -26,8 +26,9 @@ function Row({ label, value }) {
 export default function MachineDetailPanel({ machine, onClose }) {
   const closeRef = useRef(null);
 
+  useEffect(() => closeRef.current?.focus(), []); // focus once when the panel opens, not on every live update
+
   useEffect(() => {
-    closeRef.current?.focus();
     const onKey = (e) => e.key === "Escape" && onClose();
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);

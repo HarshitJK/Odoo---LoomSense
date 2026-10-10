@@ -1,29 +1,37 @@
 import { useState } from "react";
-import { PlusCircle } from "lucide-react";
+import Button from "../common/Button.jsx";
+import Card from "../common/Card.jsx";
+import FormField, { Input, Select } from "../common/FormField.jsx";
+import Notice from "../common/Notice.jsx";
 
-export default function AttendanceForm({
-  workerProfiles = [],
-  orders = [],
-  machines = [],
-  onLogAttendance,
-}) {
-  const today = new Date().toISOString().split("T")[0];
+const todayDate = () => new Date().toLocaleDateString("en-CA");
 
-  const [formData, setFormData] = useState({
+/**
+ * Log hours for a worker. Worker, order, hours and overtime are asked for; the date is shown and can be changed.
+ * The machine is the worker's latest machine (else the first machine) and is sent as before.
+ *   workerProfiles - GET /api/workers items
+ *   orders, machines - lists of ids
+ *   onLogAttendance(entry) - async; throws with the server's message on failure
+ */
+export default function AttendanceForm({ workerProfiles = [], orders = [], machines = [], onLogAttendance }) {
+  const emptyForm = () => ({
     workerId: workerProfiles[0]?.workerId || "",
     orderId: orders[0] || "",
-    machineId: machines[0] || "",
     hoursWorked: "8",
     overtimeHours: "0",
-    date: today,
+    date: todayDate(),
   });
 
+  const [formData, setFormData] = useState(emptyForm);
   const [error, setError] = useState("");
+  const [saved, setSaved] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
-    if (error) setError("");
+    setError("");
+    setSaved(false);
   };
 
   const handleSubmit = async (e) => {
@@ -31,209 +39,81 @@ export default function AttendanceForm({
 
     const hours = parseFloat(formData.hoursWorked);
     const overtime = parseFloat(formData.overtimeHours || 0);
+    const profile = workerProfiles.find((p) => p.workerId === formData.workerId);
+    const machineId = profile?.latestAssignment?.machineId || machines[0] || "";
 
-    // Basic validation
-    if (!formData.workerId) {
-      setError("Please select a worker.");
-      return;
-    }
-    if (!formData.orderId) {
-      setError("Please select an order.");
-      return;
-    }
-    if (!formData.machineId) {
-      setError("Please select a machine.");
-      return;
-    }
-    if (isNaN(hours) || hours <= 0) {
-      setError("Hours worked must be greater than 0.");
-      return;
-    }
-    if (isNaN(overtime) || overtime < 0) {
-      setError("Overtime hours cannot be negative.");
-      return;
-    }
-    if (!formData.date) {
-      setError("Please select a valid date.");
-      return;
-    }
+    if (!profile) return setError("Choose a worker.");
+    if (!formData.orderId) return setError("Choose an order.");
+    if (!machineId) return setError("No machine is available to log these hours against.");
+    if (isNaN(hours) || hours <= 0) return setError("Enter the hours worked, more than 0.");
+    if (isNaN(overtime) || overtime < 0) return setError("Overtime cannot be less than 0.");
+    if (!formData.date) return setError("Choose the date.");
 
-    const selectedProfile = workerProfiles.find(
-      (p) => p.workerId === formData.workerId
-    );
-
-    if (!selectedProfile) {
-      setError("Selected worker profile not found.");
-      return;
-    }
-
-    // Create new attendance record
-    const newEntry = {
-      workerId: selectedProfile.workerId,
-      name: selectedProfile.name,
-      shift: selectedProfile.shift,
-      machineId: formData.machineId,
-      orderId: formData.orderId,
-      hoursWorked: hours,
-      overtimeHours: overtime,
-      hourlyRate: selectedProfile.hourlyRate,
-      date: formData.date,
-    };
-
+    setBusy(true);
     try {
-      await onLogAttendance(newEntry); // throws with the server's message on failure
+      await onLogAttendance({
+        workerId: profile.workerId,
+        name: profile.name,
+        shift: profile.shift,
+        machineId,
+        orderId: formData.orderId,
+        hoursWorked: hours,
+        overtimeHours: overtime,
+        hourlyRate: profile.hourlyRate,
+        date: formData.date,
+      }); // throws with the server's message on failure
     } catch (err) {
-      setError(err?.response?.data?.detail || err?.message || "Could not save attendance.");
+      setError(err?.response?.data?.detail || "Could not save these hours. Check the details and try again.");
       return;
+    } finally {
+      setBusy(false);
     }
 
-    // Clear / reset form after successful submit
-    setFormData({
-      workerId: workerProfiles[0]?.workerId || "",
-      orderId: orders[0] || "",
-      machineId: machines[0] || "",
-      hoursWorked: "",
-      overtimeHours: "0",
-      date: today,
-    });
+    setFormData({ ...emptyForm(), hoursWorked: "", date: formData.date });
     setError("");
+    setSaved(true);
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-      <div className="mb-4">
-        <h2 className="text-base font-semibold text-slate-900 flex items-center gap-2">
-          <PlusCircle className="w-5 h-5 text-blue-600" />
-          Log Worker Attendance & Hours
-        </h2>
-        <p className="text-xs text-slate-500 mt-0.5">
-          Record shift hours against order and machine to calculate real-time labour costs
-        </p>
-      </div>
+    <Card title="Log hours">
+      <form onSubmit={handleSubmit} className="mt-3 space-y-4" noValidate>
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+          <FormField label="Worker" required className="col-span-2 lg:col-span-1">
+            <Select name="workerId" value={formData.workerId} onChange={handleChange}>
+              {workerProfiles.map((p) => (
+                <option key={p.workerId} value={p.workerId}>{p.name}</option>
+              ))}
+            </Select>
+          </FormField>
 
-      {error && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg">
-          {error}
-        </div>
-      )}
+          <FormField label="Order" required className="col-span-2 lg:col-span-1">
+            <Select name="orderId" value={formData.orderId} onChange={handleChange}>
+              {orders.map((ord) => (
+                <option key={ord} value={ord}>{ord}</option>
+              ))}
+            </Select>
+          </FormField>
 
-      <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3">
-        {/* Worker */}
-        <div>
-          <label className="block text-xs font-semibold text-slate-600 mb-1">
-            Worker <span className="text-red-500">*</span>
-          </label>
-          <select
-            name="workerId"
-            value={formData.workerId}
-            onChange={handleChange}
-            className="w-full text-sm rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          >
-            {workerProfiles.map((p) => (
-              <option key={p.workerId} value={p.workerId}>
-                {p.workerId} - {p.name}
-              </option>
-            ))}
-          </select>
+          <FormField label="Hours worked" required>
+            <Input type="number" inputMode="decimal" step="0.5" min="0.5" name="hoursWorked" value={formData.hoursWorked} onChange={handleChange} />
+          </FormField>
+
+          <FormField label="Overtime hours">
+            <Input type="number" inputMode="decimal" step="0.5" min="0" name="overtimeHours" value={formData.overtimeHours} onChange={handleChange} />
+          </FormField>
+
+          <FormField label="Date" required className="col-span-2 lg:col-span-1">
+            <Input type="date" name="date" value={formData.date} onChange={handleChange} />
+          </FormField>
         </div>
 
-        {/* Order */}
-        <div>
-          <label className="block text-xs font-semibold text-slate-600 mb-1">
-            Order <span className="text-red-500">*</span>
-          </label>
-          <select
-            name="orderId"
-            value={formData.orderId}
-            onChange={handleChange}
-            className="w-full text-sm rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          >
-            {orders.map((ord) => (
-              <option key={ord} value={ord}>
-                {ord}
-              </option>
-            ))}
-          </select>
-        </div>
+        {error && <Notice tone="error">{error}</Notice>}
 
-        {/* Machine */}
-        <div>
-          <label className="block text-xs font-semibold text-slate-600 mb-1">
-            Machine <span className="text-red-500">*</span>
-          </label>
-          <select
-            name="machineId"
-            value={formData.machineId}
-            onChange={handleChange}
-            className="w-full text-sm rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          >
-            {machines.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Regular Hours */}
-        <div>
-          <label className="block text-xs font-semibold text-slate-600 mb-1">
-            Hours Worked <span className="text-red-500">*</span>
-          </label>
-          <input
-            type="number"
-            step="0.5"
-            min="0.5"
-            name="hoursWorked"
-            value={formData.hoursWorked}
-            onChange={handleChange}
-            placeholder="e.g. 8"
-            className="w-full text-sm rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          />
-        </div>
-
-        {/* Overtime Hours */}
-        <div>
-          <label className="block text-xs font-semibold text-slate-600 mb-1">
-            Overtime (Hrs)
-          </label>
-          <input
-            type="number"
-            step="0.5"
-            min="0"
-            name="overtimeHours"
-            value={formData.overtimeHours}
-            onChange={handleChange}
-            placeholder="e.g. 1"
-            className="w-full text-sm rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          />
-        </div>
-
-        {/* Date */}
-        <div>
-          <label className="block text-xs font-semibold text-slate-600 mb-1">
-            Date <span className="text-red-500">*</span>
-          </label>
-          <input
-            type="date"
-            name="date"
-            value={formData.date}
-            onChange={handleChange}
-            className="w-full text-sm rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          />
-        </div>
-
-        {/* Button */}
-        <div className="md:col-span-3 lg:col-span-6 flex justify-end mt-2">
-          <button
-            type="submit"
-            className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg shadow-sm transition-colors cursor-pointer"
-          >
-            <PlusCircle className="w-4 h-4" />
-            Log Hours
-          </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button type="submit" variant="primary" disabled={busy}>{busy ? "Saving" : "Save hours"}</Button>
+          {saved && <span role="status" className="text-sm text-green-700">Saved</span>}
         </div>
       </form>
-    </div>
+    </Card>
   );
 }
