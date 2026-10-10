@@ -18,7 +18,7 @@ export default function MonthEndBooks() {
   const { data: r, error, loading, reload } = useApi(`/api/finance/month-end?month=${month}`);
 
   const lines = r && [
-    ["Payments received from buyers", r.buyerPaymentsReceived],
+    ["Cash received from buyers", r.buyerPaymentsReceived],
     ["Raw material bills", r.rawMaterialBills],
     ["Worker wages", r.workerWages],
     ["Machine running cost", r.machineOperatingCost],
@@ -27,7 +27,7 @@ export default function MonthEndBooks() {
   ];
 
   return (
-    <Disclosure title="Month-end report">
+    <Disclosure title="Month-end books: cash and incurred costs">
       <div className="space-y-5">
         <div className="flex flex-wrap items-end gap-3">
           <FormField label="Month">

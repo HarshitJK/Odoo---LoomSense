@@ -53,7 +53,7 @@ export default function OwnerDashboard() {
 
       {d && (
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          <KpiCard title="Revenue" value={formatCurrency(kpis.revenue)} subtitle={d.label} />
+          <KpiCard title="Earned revenue" value={formatCurrency(kpis.revenue)} subtitle={d.label} />
           <KpiCard title="Total cost" value={formatCurrency(kpis.productionCost)} />
           <KpiCard title="Net profit" value={formatCurrency(kpis.netProfit)} />
           <KpiCard
@@ -64,6 +64,11 @@ export default function OwnerDashboard() {
           />
         </div>
       )}
+
+      {d && <div className="grid grid-cols-2 gap-4">
+        <KpiCard title="Cash received from buyers" value={formatCurrency(kpis.buyerPayments)} subtitle={d.label} />
+        <KpiCard title="Still to collect" value={formatCurrency(kpis.paymentsPending)} subtitle="All orders, lifetime balance" />
+      </div>}
 
       {(monthly.data || d) && (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">

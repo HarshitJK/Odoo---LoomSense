@@ -20,22 +20,22 @@ export default function MainLayout() {
     <div className="flex min-h-screen">
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 items-center justify-between border-b border-blue-950 bg-blue-900 px-4 md:hidden">
-          <span className="text-lg font-semibold text-white">LoomSense</span>
+        <header className="flex h-14 items-center justify-between border-b border-gray-200 bg-blue-50 px-4 md:hidden">
+          <span className="text-lg font-semibold text-gray-900">LoomSense</span>
           <button
             type="button"
             aria-label={menuOpen ? "Close menu" : "Open menu"}
             aria-expanded={menuOpen}
             aria-controls="mobile-menu"
             onClick={() => setMenuOpen((v) => !v)}
-            className="flex h-10 w-10 items-center justify-center rounded-md border border-blue-700 text-white"
+            className="flex h-10 w-10 items-center justify-center rounded-md border border-blue-700 text-gray-900"
           >
             {menuOpen ? <X size={16} aria-hidden="true" /> : <Menu size={16} aria-hidden="true" />}
           </button>
         </header>
 
         {menuOpen && (
-          <div id="mobile-menu" className="border-b border-blue-950 bg-blue-900 md:hidden">
+          <div id="mobile-menu" className="border-b border-gray-200 bg-blue-50 md:hidden">
             <div className="p-3">
               <NavLinks large onNavigate={() => setMenuOpen(false)} />
             </div>

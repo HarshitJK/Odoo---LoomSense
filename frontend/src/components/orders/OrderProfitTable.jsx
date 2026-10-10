@@ -13,7 +13,7 @@ export default function OrderProfitTable({ orders }) {
   const limiter = useRowLimit(sorted, 5);
 
   return (
-    <Card title="Orders, lowest margin first" padded={false}>
+    <Card title="Lifetime order profit, lowest margin first" padded={false}>
       <Table caption="Orders with revenue, profit and margin">
         <THead>
           <Th>Order</Th>
