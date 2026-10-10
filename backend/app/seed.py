@@ -18,12 +18,15 @@ REV = {"ORD071": 270000, "ORD078": 295000, "ORD085": 157000, "ORD091": 213000,
 MACHINES = [
     # id, status, order, rate, produced, target, temp, costPerHour, efficiency
     ("W01", "RUNNING", "ORD104", 112, 1460, 2000, 61.0, 600, 0.91),
-    ("W02", "RUNNING", "ORD108", 105, 400, 1600, 58.5, 580, 0.88),
+    ("W02", "RUNNING", "ORD108", 105, 400, 835, 58.5, 580, 0.88),
     ("W03", "RUNNING", "ORD091", 84, 1200, 1200, 66.2, 650, 0.74),
-    ("W04", "RUNNING", "ORD108", 98, 360, 1600, 60.1, 520, 0.85),
+    ("W04", "RUNNING", "ORD108", 98, 360, 765, 60.1, 520, 0.85),
     ("W05", "IDLE", None, 0, 0, 0, 31.0, 450, 0.0),
     ("W06", "DOWN", None, 0, 0, 0, 28.0, 700, 0.0),
 ]
+
+# Hours each machine has run today (simulator adds to this)
+RUNTIME_TODAY = {"W01": 6.5, "W02": 5.2, "W03": 7.8, "W04": 4.1, "W05": 2.0, "W06": 0.0}
 
 INVENTORY = [
     ("YB82", "Cotton Yarn", "Navy Blue", 950, 180, "Supplier A", "2026-10-01"),
@@ -98,6 +101,14 @@ WORK = [
 ]
 
 
+def build_machines():
+    return [Machine(
+        machineId=m[0], name=f"Weaving Machine {m[0][1:]}", type="WEAVING", status=m[1],
+        currentOrderId=m[2], productionRate=m[3], producedMeters=m[4], targetMeters=m[5],
+        temperature=m[6], costPerHour=m[7], efficiency=m[8],
+        runtimeToday=RUNTIME_TODAY[m[0]]).model_dump() for m in MACHINES]
+
+
 def build_orders():
     return [Order(
         orderId=o[0], buyerId=o[1], buyerName=o[2], fabricType=o[3], colour=o[4],
@@ -139,10 +150,7 @@ def main():
 
     data = {
         dbm.orders(): build_orders(),
-        dbm.machines(): [Machine(
-            machineId=m[0], name=f"Weaving Machine {m[0][1:]}", type="WEAVING", status=m[1],
-            currentOrderId=m[2], productionRate=m[3], producedMeters=m[4], targetMeters=m[5],
-            temperature=m[6], costPerHour=m[7], efficiency=m[8]).model_dump() for m in MACHINES],
+        dbm.machines(): build_machines(),
         dbm.inventory(): [InventoryBatch(
             batchId=i[0], material=i[1], colour=i[2], quantityKg=i[3], costPerKg=i[4],
             supplier=i[5], receivedDate=i[6]).model_dump() for i in INVENTORY],

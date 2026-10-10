@@ -58,13 +58,16 @@ check("order patch", "PATCH", f"/api/orders/{new['orderId']}", body={"status": "
 check("order patch 404", "PATCH", "/api/orders/NOPE", 404, {"status": "X"})
 
 # Machines
-check("machines", "GET", "/api/machines", test=lambda d: len(d) == 6)
+check("machines", "GET", "/api/machines", test=lambda d: len(d) == 6 and "costPerMeter" in d[0])
 check("machine", "GET", "/api/machines/W01", test=lambda d: d["machineId"] == "W01")
 check("machine 404", "GET", "/api/machines/NOPE", expect=404)
 check("machine patch", "PATCH", "/api/machines/W05", body={"productionRate": 50},
-      test=lambda d: d["productionRate"] == 50)
+      test=lambda d: d["costPerMeter"] == 9.0)  # 450 / 50
 check("machine reset", "PATCH", "/api/machines/W05", body={"productionRate": 0})
-check("simulate stub", "POST", "/api/machines/simulate", expect=501)
+check("simulate 404", "POST", "/api/machines/simulate", 404, {"action": "failure", "machineId": "NOPE"})
+check("simulate 422", "POST", "/api/machines/simulate", 422, {"action": "bogus"})
+check("simulate stop", "POST", "/api/machines/simulate", 200, {"action": "stop"}, test=lambda d: d["running"] is False)
+check("simulate start", "POST", "/api/machines/simulate", 200, {"action": "start"}, test=lambda d: d["running"] is True)
 
 # Inventory
 check("inventory", "GET", "/api/inventory",

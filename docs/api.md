@@ -36,19 +36,79 @@ POST body example: `{"buyerName": "ABC Garments", "fabricType": "Cotton", "colou
 PATCH body example: `{"status": "QUALITY_CHECK", "producedMeters": 2000}`
 
 ## Machines
+
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/api/machines` | List machines (W01–W06) |
+| GET | `/api/machines` | List machines (W01-W06) with live production fields |
 | GET | `/api/machines/{machine_id}` | One machine |
-| PATCH | `/api/machines/{machine_id}` | Update `status`, `currentOrderId`, `productionRate` |
-| POST | `/api/machines/simulate` | Not implemented yet, returns 501 |
+| PATCH | `/api/machines/{machine_id}` | Update `status`, `currentOrderId`, `productionRate` (returns the machine object) |
+| POST | `/api/machines/simulate` | Demo controls for the machine simulator (see below) |
+
+Machine object (same shape in REST and WebSocket):
+```json
+{"machineId": "W01", "name": "Weaving Machine 01", "status": "RUNNING", "currentOrderId": "ORD104",
+ "producedMeters": 1494.7, "targetMeters": 2000.0, "progress": 74.7, "productionRate": 112.0,
+ "efficiency": 0.92, "temperature": 55.4, "costPerHour": 600.0, "costPerMeter": 5.36,
+ "orderMachineCost": 8007.16, "estimatedCompletion": "2026-10-10T17:05:23", "runtimeToday": 6.65}
+```
+- `status` is `RUNNING`, `IDLE` or `DOWN`. `productionRate` (metres per hour) is 0 unless the machine is `RUNNING`.
+- `progress` is `producedMeters / targetMeters` in %, capped at 100. `costPerMeter` = `costPerHour / rate` (INR).
+- `orderMachineCost` is the machine cost attributed so far to `currentOrderId` (`producedMeters / rate x costPerHour`).
+- `estimatedCompletion` is when the order finishes at the current combined rate of its running machines; `null` if the machine is not running.
+- `runtimeToday` is in hours. A machine that finished its order goes `IDLE` but keeps `currentOrderId` so its cost stays attributed to that order.
+- Two machines (W02, W04) share order ORD108, so their `producedMeters` are shares of the order total.
+
+### Simulator
+
+The simulator is an asyncio task inside the API process. Every 3 seconds each `RUNNING` machine advances by about `productionRate x 3 s / 3600 x 60` metres (2-8 m for the seeded machines; 1 real second counts as 1 factory minute), temperature is jittered between 55 and 70 and efficiency between 0.85 and 0.95. The linked order's `producedMeters` is updated and its machine cost, profit and margin are recomputed. When an order reaches `quantityMeters` it moves to `QUALITY_CHECK`, its machines go `IDLE`, and an `order_completed` event is sent. Set `SIMULATOR_AUTOSTART=false` to start it paused.
+
+`POST /api/machines/simulate`
+
+| Body field | Meaning |
+|---|---|
+| `action` | `start`, `stop`, `reset` or `failure` (required) |
+| `machineId` | Optional. `start`/`stop` without it start/stop the whole simulator; with it, one machine. `failure` without it fails a random running machine |
+| `speed` | Optional speed multiplier, greater than 0 and at most 100 (e.g. `20` to finish orders quickly in a demo) |
+
+- `start` with a `machineId` needs an order assigned (409 otherwise). `reset` restores the seeded machines (or one machine) and the produced metres and status of their orders. `failure` sets the machine to `DOWN`.
+- Errors: 404 unknown machine, 409 not allowed, 422 invalid body.
 
 ```json
-{"machineId": "W01", "name": "Weaving Machine 01", "type": "WEAVING", "status": "RUNNING",
- "currentOrderId": "ORD104", "productionRate": 112.0, "producedMeters": 1460.0, "targetMeters": 2000.0,
- "temperature": 61.0, "costPerHour": 600.0, "efficiency": 0.91}
+{"action": "start", "speed": 20}
 ```
-`status` is `RUNNING`, `IDLE` or `DOWN`. PATCH body example: `{"status": "IDLE", "currentOrderId": null}`
+Response:
+```json
+{"running": true, "speed": 20.0, "message": "Simulator started"}
+```
+
+## WebSocket
+
+`WS /ws/machines` (e.g. `ws://localhost:8000/ws/machines`). Server to client only; anything the client sends is ignored.
+
+1. On connect: a `snapshot` message with all machines.
+2. Every 3 seconds while the simulator runs: a `machine_update` message with all machines. When the simulator is stopped, updates stop.
+3. Events when something notable happens: `order_completed`, `machine_failure`, `simulator_started`, `simulator_stopped`.
+4. After `reset`, `failure` or a per-machine `start`/`stop`, an extra `machine_update` is sent immediately.
+
+`snapshot` and `machine_update`:
+```json
+{"type": "machine_update", "timestamp": "2026-10-10T12:41:03",
+ "simulator": {"running": true, "speed": 1.0},
+ "machines": [{"machineId": "W01", "name": "Weaving Machine 01", "status": "RUNNING", "currentOrderId": "ORD104",
+               "producedMeters": 1494.7, "targetMeters": 2000.0, "progress": 74.7, "productionRate": 112.0,
+               "efficiency": 0.92, "temperature": 55.4, "costPerHour": 600.0, "costPerMeter": 5.36,
+               "orderMachineCost": 8007.16, "estimatedCompletion": "2026-10-10T17:05:23", "runtimeToday": 6.65}]}
+```
+(`machines` has one entry per machine; one is shown.)
+
+`event`:
+```json
+{"type": "event", "event": "order_completed", "machineId": "W01", "orderId": "ORD104",
+ "message": "Order ORD104 finished production on W01. Ready for quality check.", "timestamp": "2026-10-10T12:45:12"}
+```
+If MongoDB is down on connect, the first message is `{"type": "error", "message": "MongoDB is not available"}`.
+
+Quick check without a frontend: `python ws_check.py` in `backend/` prints the first five messages.
 
 ## Inventory
 | Method | Path | Purpose |
@@ -190,5 +250,4 @@ Per-order figures use the full contract revenue against the cost so far, so an o
 ```
 
 ## Not implemented yet
-`POST /api/machines/simulate` (501), `GET /api/passport/{roll_id}`, `GET /api/buyer/track/{order_id}` (placeholder only),
-`WS /ws/machines` (demo feed only).
+`GET /api/passport/{roll_id}`, `GET /api/buyer/track/{order_id}` (placeholder only).

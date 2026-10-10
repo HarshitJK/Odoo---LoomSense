@@ -14,3 +14,7 @@ Check: `curl http://localhost:8000/api/health` -> `{"status":"ok","database":"co
 
 Tests (use a separate `loomsense_test` database): `python -m pytest`
 API smoke test (server running): `python smoke_test.py`
+
+Live machines: the simulator runs inside the API (set `SIMULATOR_AUTOSTART=false` to start it paused).
+Watch the stream without a frontend: `python ws_check.py` (prints the first 5 WebSocket messages).
+Speed up a demo: `curl -X POST localhost:8000/api/machines/simulate -H "Content-Type: application/json" -d '{"action":"start","speed":20}'`

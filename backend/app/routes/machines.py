@@ -1,7 +1,8 @@
 from fastapi import APIRouter, HTTPException
 
 from app import database as dbm
-from app.models.machine import MachineUpdate
+from app.models.machine import MachineUpdate, SimulateRequest
+from app.services import machine_simulator as simulator
 from app.services import profitability
 
 router = APIRouter()
@@ -10,20 +11,26 @@ NO_ID = {"_id": 0}
 
 @router.get("")
 def list_machines():
-    return list(dbm.machines().find({}, NO_ID).sort("machineId", 1))
+    return simulator.get_snapshot()
 
 
 @router.post("/simulate")
-def simulate():
-    raise HTTPException(501, "Machine simulator is not implemented yet")
+async def simulate(body: SimulateRequest):
+    """Demo controls: start / stop the simulator (or one machine), reset, or fail a machine."""
+    try:
+        return await simulator.control(body.action, body.machineId, body.speed)
+    except simulator.MachineNotFound as e:
+        raise HTTPException(404, str(e))
+    except ValueError as e:
+        raise HTTPException(409, str(e))
 
 
 @router.get("/{machine_id}")
 def get_machine(machine_id: str):
-    machine = dbm.machines().find_one({"machineId": machine_id}, NO_ID)
-    if not machine:
-        raise HTTPException(404, f"Machine {machine_id} not found")
-    return machine
+    for machine in simulator.get_snapshot():
+        if machine["machineId"] == machine_id:
+            return machine
+    raise HTTPException(404, f"Machine {machine_id} not found")
 
 
 @router.patch("/{machine_id}")

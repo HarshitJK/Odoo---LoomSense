@@ -1,6 +1,6 @@
-from typing import Optional
+from typing import Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class Machine(BaseModel):
@@ -15,9 +15,17 @@ class Machine(BaseModel):
     temperature: Optional[float] = None
     costPerHour: float = 0
     efficiency: float = 0
+    runtimeToday: float = 0  # hours
 
 
 class MachineUpdate(BaseModel):
     status: Optional[str] = None
     currentOrderId: Optional[str] = None
     productionRate: Optional[float] = None
+
+
+class SimulateRequest(BaseModel):
+    """Body for POST /api/machines/simulate."""
+    action: Literal["start", "stop", "reset", "failure"]
+    machineId: Optional[str] = None
+    speed: Optional[float] = Field(default=None, gt=0, le=100)

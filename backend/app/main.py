@@ -1,3 +1,6 @@
+import asyncio
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from pymongo.errors import PyMongoError
@@ -5,10 +8,20 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import CORS_ORIGINS
 from app.routes import buyers, finance, health, inventory, machines, orders, quality, workers
+from app.services import machine_simulator
 from app.services.costing import OrderNotFound
 from app.websocket import machines as machines_ws
 
-app = FastAPI(title="LoomSense API")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Run the machine simulator in the same process as the API."""
+    machine_simulator.add_listener(machines_ws.manager.broadcast)
+    task = asyncio.create_task(machine_simulator.run_forever())
+    yield
+    task.cancel()
+
+
+app = FastAPI(title="LoomSense API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
