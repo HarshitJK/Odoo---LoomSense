@@ -21,7 +21,7 @@ Endpoint details are in [api.md](api.md).
 | `/workers` WorkersPage | **Live API** | `GET /api/workers` (monthly hours and wages), `GET /api/workers/wages/summary` (cards and labour cost per order), `GET /api/finance/profit-leakage` (insight banner), `GET /api/orders` and `GET /api/machines` (form options), `POST /api/attendance`; refetches after logging hours |
 | `/quality` QualityPage | **Live API** | `GET /api/quality`, `GET /api/orders`, `GET /api/inventory`, `GET /api/machines` (dropdowns), `POST /api/quality` (shows the server's `impact`, `marginBefore` → `marginAfter`) |
 | `/passport/:rollId` FabricPassportPage | **Live API (public)** | `GET /api/passport/{rollId}`; shows passport fields only. 404 shows "Roll Not Found" |
-| `/track`, `/track/:orderId` BuyerTrackingPage | **Live API (public)** | `GET /api/buyer/track/{orderId}`; accepts `ORD104` and `ORD-104`; 404 shows "Tracking ID Not Found" |
+| `/track/:token` BuyerTrackingPage | **Live API (public)** | `GET /api/buyer/track/{token}`; order ids are not accepted; 404 shows "This tracking link is not valid or has been replaced"; `/track` alone shows a short info message |
 
 ## Still not on the API, and why
 - **`/orders`** is only a heading. Nobody built the page; the data is available from the API.

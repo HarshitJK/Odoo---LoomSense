@@ -3,7 +3,11 @@
 Everything returned here is public: never add costs, revenue, profit, margin, wages,
 supplier details or internal alerts.
 """
+from datetime import datetime, timezone
+
 from app import database as dbm
+from app.config import TRACKING_BASE_URL
+from app.utils.tokens import new_tracking_token
 
 NO_ID = {"_id": 0}
 
@@ -17,6 +21,26 @@ STATUS_STAGE = {
     "DISPATCHED": 6, "COMPLETED": 6, "DELIVERED": 6,
 }
 DISPATCHED = {"DISPATCHED", "COMPLETED", "DELIVERED"}
+
+
+def tracking_url(token: str) -> str:
+    return f"{TRACKING_BASE_URL}/track/{token}"
+
+
+def ensure_tracking_tokens() -> int:
+    """Give a token to every order that has none. Idempotent."""
+    stamp = datetime.now(timezone.utc).isoformat()
+    count = 0
+    for order in list(dbm.orders().find({"$or": [{"trackingToken": {"$exists": False}}, {"trackingToken": None}, {"trackingToken": ""}]})):
+        dbm.orders().update_one({"_id": order["_id"]}, {"$set": {"trackingToken": new_tracking_token(), "updatedAt": stamp}})
+        count += 1
+    return count
+
+
+def ensure_indexes() -> None:
+    """Backfill first: a unique index would reject several orders that all lack a token."""
+    ensure_tracking_tokens()
+    dbm.orders().create_index("trackingToken", unique=True)
 
 
 def build_stages(status: str, progress: int) -> list:

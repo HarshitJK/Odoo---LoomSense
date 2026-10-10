@@ -25,3 +25,9 @@ def authenticated_legacy_client(request, seeded_db):
     client = getattr(request.module, "client", None)
     if client is not None:
         client.headers["Authorization"] = "Bearer " + issue_token({"email": "owner@loomsense.demo"})
+
+
+@pytest.fixture(autouse=True)
+def fresh_rate_limit():
+    from app.services import rate_limit
+    rate_limit.reset()

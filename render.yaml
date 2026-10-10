@@ -19,6 +19,8 @@ services:
         sync: false
       - key: PASSPORT_BASE_URL  # your deployed frontend URL
         sync: false
+      - key: TRACKING_BASE_URL  # buyer tracking links; leave empty to use PASSPORT_BASE_URL
+        sync: false
       - key: ADMIN_KEY
         generateValue: true
       - key: SIMULATOR_AUTOSTART

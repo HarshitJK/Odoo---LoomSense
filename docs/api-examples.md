@@ -188,9 +188,10 @@ No cost, impact, revenue or profit fields. Roll ids are tolerant of hyphens and 
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/api/buyer/track/{order_id}` | Buyer-safe order status. `ORD104`, `ORD-104` and `ord-104` all work |
+| GET | `/api/buyer/track/{token}` | Buyer-safe order status for the private `trackingToken` (read it, with `trackingUrl`, from `GET /api/orders/{id}`). Order ids such as `ORD104` return 404 |
+| POST | `/api/orders/{order_id}/tracking/regenerate` | New tracking token and URL; the old link stops working |
 
-Only these fields are returned: no revenue, costs, wages, machine costs, profit, margin, supplier data or internal alerts (a test enforces this). Unknown ids return 404 with a friendly message.
+Only these fields are returned: no revenue, costs, wages, machine costs, profit, margin, supplier data or internal alerts (a test enforces this). Unknown or revoked tokens return `404 {"detail": "Tracking link not found"}`.
 
 ```json
 {"orderId": "ORD104", "buyerName": "ABC Garments", "fabricType": "Cotton", "colour": "Navy Blue",

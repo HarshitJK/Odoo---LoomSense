@@ -13,7 +13,7 @@ from app.models.order import Order
 from app.models.quality import QualityCheck
 from app.models.transaction import Transaction
 from app.models.worker import Worker
-from app.services import profitability
+from app.services import profitability, tracking
 
 REV = {"ORD071": 270000, "ORD078": 295000, "ORD085": 157000, "ORD091": 213000,
        "ORD104": 356000, "ORD108": 285000}
@@ -236,6 +236,10 @@ def seed_financial_history():
         dbm.db[coll].create_index(field, unique=True)
     dbm.db.materialPurchases.create_index([("supplier",1),("invoiceNumber",1)], unique=True)
     dbm.db.machineProductionEvents.create_index("timestamp")
+    tracking.ensure_tracking_tokens()
+    ord104 = dbm.orders().find_one({"orderId": "ORD104"}, {"trackingToken": 1})
+    if ord104:
+        print("ORD104 buyer tracking link:", tracking.tracking_url(ord104["trackingToken"]))
 
 
 if __name__ == "__main__":

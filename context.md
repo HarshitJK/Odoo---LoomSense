@@ -715,7 +715,8 @@ GET    /api/finance/orders/{order_id}
 
 ## Buyer Tracking
 ```text
-GET    /api/buyer/track/{order_id}
+GET    /api/buyer/track/{trackingToken}        (private random token, never the order id)
+POST   /api/orders/{order_id}/tracking/regenerate
 ```
 
 ## WebSocket

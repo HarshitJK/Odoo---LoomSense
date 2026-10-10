@@ -6,8 +6,9 @@ from app.services.auth import current_user, owner
 
 from app import database as dbm
 from app.models.order import Order, OrderCreate, OrderUpdate, ReadinessRequest
-from app.services import costing, order_readiness, profitability
+from app.services import costing, order_readiness, profitability, tracking
 from app.utils.ids import next_order_id
+from app.utils.tokens import new_tracking_token
 
 router = APIRouter()
 NO_ID = {"_id": 0}
@@ -69,9 +70,25 @@ def update_order(order_id: str, body: OrderUpdate, user=Depends(current_user)):
     return order_view(costing.get_order(order_id), user)
 
 
+@router.post("/{order_id}/tracking/regenerate")
+def regenerate_tracking(order_id: str, user=Depends(current_user)):
+    """New private link; the old one stops working immediately."""
+    token = new_tracking_token()
+    updated = dbm.orders().find_one_and_update(
+        {"orderId": normalize_id(order_id)},
+        {"$set": {"trackingToken": token, "updatedAt": datetime.now(timezone.utc).isoformat()}},
+        projection=NO_ID,
+    )
+    if not updated:
+        raise HTTPException(404, f"Order {normalize_id(order_id)} not found")
+    return {"orderId": updated["orderId"], "trackingToken": token, "trackingUrl": tracking.tracking_url(token)}
+
+
 def order_view(order, user):
     if user["role"] != "OWNER":
-        return {k: v for k, v in order.items() if k not in ("costs", "profit", "margin", "paidAmount", "otherCost", "yarnConsumedKg")}
+        order = {k: v for k, v in order.items() if k not in ("costs", "profit", "margin", "paidAmount", "otherCost", "yarnConsumedKg")}
+    if order.get("trackingToken"):
+        order = {**order, "trackingUrl": tracking.tracking_url(order["trackingToken"])}
     return order
 
 

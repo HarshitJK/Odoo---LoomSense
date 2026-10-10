@@ -13,7 +13,8 @@ from app.config import CORS_ORIGINS
 from app.routes import (
     auth, purchases, buyers, demo, finance, health, inventory, machines, orders, quality, transactions, workers,
 )
-from app.services import machine_simulator
+from app.services import machine_simulator, tracking
+from app.utils.tokens import mask_tracking_path
 from app.services.costing import OrderNotFound
 from app.websocket import machines as machines_ws
 
@@ -24,6 +25,10 @@ def jsonable_errors(exc: RequestValidationError) -> list:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Run the machine simulator in the same process as the API."""
+    try:
+        tracking.ensure_indexes()  # backfill missing tracking tokens, then enforce uniqueness
+    except PyMongoError:
+        log.warning("Could not prepare the orders.trackingToken index; MongoDB is not reachable yet")
     machine_simulator.add_listener(machines_ws.manager.broadcast)
     task = asyncio.create_task(machine_simulator.run_forever())
     yield
@@ -31,6 +36,17 @@ async def lifespan(app: FastAPI):
 
 
 log = logging.getLogger("loomsense")
+
+
+class MaskTrackingTokens(logging.Filter):
+    """Never write a full buyer tracking token to the logs (uvicorn's access log prints the request path)."""
+    def filter(self, record):
+        if isinstance(record.args, tuple):
+            record.args = tuple(mask_tracking_path(a) if isinstance(a, str) else a for a in record.args)
+        return True
+
+
+logging.getLogger("uvicorn.access").addFilter(MaskTrackingTokens())
 app = FastAPI(title="LoomSense API", lifespan=lifespan)
 
 app.add_middleware(
@@ -72,7 +88,7 @@ def validation_error(request: Request, exc: RequestValidationError):
 
 @app.exception_handler(Exception)
 def unexpected_error(request: Request, exc: Exception):
-    log.exception("Unhandled error on %s %s", request.method, request.url.path)
+    log.exception("Unhandled error on %s %s", request.method, mask_tracking_path(request.url.path))
     return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
 

@@ -151,10 +151,10 @@ def test_buyer_tracking_rejects_predictable_order_ids():
         assert client.get("/api/buyer/track/" + value).status_code == 404
 
 
-def test_buyer_tracking_unknown_order_has_friendly_404():
+def test_buyer_tracking_unknown_token_has_generic_404():
     res = client.get("/api/buyer/track/ORD-999")
     assert res.status_code == 404
-    assert "couldn't find" in res.json()["detail"]
+    assert res.json() == {"detail": "Tracking link not found"}
 
 
 def test_buyer_tracking_stages():

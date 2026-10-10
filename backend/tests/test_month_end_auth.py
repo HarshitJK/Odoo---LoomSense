@@ -90,7 +90,7 @@ def test_new_tokens_unique_and_invalid_sessions_rejected():
     c = login()
     a = c.post("/api/orders", json={"buyerName": "Test", "quantityMeters": 10}).json()
     b = c.post("/api/orders", json={"buyerName": "Test", "quantityMeters": 10}).json()
-    assert len(a["trackingToken"]) >= 40 and a["trackingToken"] != b["trackingToken"]
+    assert len(a["trackingToken"]) >= 22 and a["trackingToken"] != b["trackingToken"]
     c.headers["Authorization"] = "Bearer broken"
     assert c.get("/api/auth/me").status_code == 401
 

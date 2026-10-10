@@ -19,7 +19,8 @@ No production passwords are in source; configure JWT_SECRET and seed passwords i
 | Existing machine/inventory routes | Owner/manager |
 | Existing workers, attendance, transactions | Owner only |
 | Existing QC routes, GET `/api/quality/options` | All internal roles; financial QC fields only sent to owner |
-| GET `/api/buyer/track/{tracking_token}` | Public; token lookup and strict buyer-safe allowlist |
+| GET `/api/buyer/track/{token}` | Public; token lookup only and strict buyer-safe allowlist; 60 requests/min per IP (429); `Cache-Control: no-store`, `X-Robots-Tag: noindex, nofollow`, `Referrer-Policy: no-referrer` |
+| POST `/api/orders/{id}/tracking/regenerate` | Owner/manager; new `trackingToken` and `trackingUrl`, the old link stops working at once; 404 for an unknown order |
 | GET `/api/passport/{rollId}` and `/qr` | Public; no private financial fields |
 | WS `/ws/machines` | Owner/manager; send `{token}` within 5 seconds of connecting |
 
@@ -33,8 +34,12 @@ machineOperatingCost, reworkCost, otherExpenses, totalCashIn, totalExpenses, net
 productionValue, machineProduction, orderProfitability, wageSummary, productionOverview,
 supplierPaymentsMade, accountingBasis. Expense costs are incurred, not proof of disbursement.
 
-The old `/api/buyer/track/ORD104` contract intentionally returns 404. Retrieve an order's trackingToken
-after internal login, or use Open secure buyer tracking in Orders. Authenticated role violations return
+The old `/api/buyer/track/ORD104` contract intentionally returns 404. Unknown, malformed and revoked tokens all
+return the same `404 {"detail": "Tracking link not found"}`. `GET /api/orders` and `GET /api/orders/{id}` (owner/manager)
+include `trackingToken` and `trackingUrl` (`{TRACKING_BASE_URL}/track/{trackingToken}`); the manager copies the link from the
+Orders screen and sends it to the buyer. The public response never contains the token. Tokens are 22-character
+`secrets.token_urlsafe(16)` values, indexed unique on `orders.trackingToken`, and backfilled at startup for older orders.
+Full tokens are masked in server logs. Authenticated role violations return
 403; missing/expired sessions return 401; malformed input/months return 422.
 
 ---
@@ -81,7 +86,7 @@ productionRate, efficiency, temperature, costPerHour, costPerMeter, orderMachine
 | POST | `/api/quality` | `{orderId, machineId, yarnBatch, shift, status, defects[], affectedMeters, reworkStatus}`; `rollId` generated |
 | GET | `/api/passport/{rollId}` | **Public.** `rollId, orderId, buyerName, yarnBatch, machineId, shift, producedAt, qualityStatus, defects, reworkStatus` |
 | GET | `/api/passport/{rollId}/qr` | **Public.** PNG QR pointing to `{PASSPORT_BASE_URL}/passport/{rollId}` |
-| GET | `/api/buyer/track/{orderId}` | **Public, buyer-safe.** `orderId, buyerName, fabricType, colour, quantityMeters, progress, currentStage, stages[], expectedCompletion, qualityStatus, dispatchStatus` |
+| GET | `/api/buyer/track/{token}` | **Public, buyer-safe.** Looks up by the private `trackingToken` only (order ids never match). `orderId, buyerName, fabricType, colour, quantityMeters, progress, currentStage, stages[], expectedCompletion, qualityStatus, dispatchStatus` |
 | POST | `/api/transactions` | `{orderId, amount, type?: BUYER_PAYMENT, date?}`; a buyer payment raises the order's `paidAmount` |
 
 `status` is `PASSED`/`FAILED`/`REWORK`/`PENDING`. For `FAILED`/`REWORK` with `affectedMeters`, the response adds

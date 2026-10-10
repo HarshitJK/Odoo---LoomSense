@@ -41,6 +41,7 @@ services:
       DB_NAME: ${DB_NAME:-loomsense}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
       PASSPORT_BASE_URL: ${PASSPORT_BASE_URL:-http://localhost:5173}
+      TRACKING_BASE_URL: ${TRACKING_BASE_URL:-}
       ADMIN_KEY: ${ADMIN_KEY:-change-me}
       SIMULATOR_AUTOSTART: ${SIMULATOR_AUTOSTART:-true}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET}

@@ -1,15 +1,14 @@
 """Non-destructive upgrade: python -m app.migrate. Does not invent historical activity."""
 import os
-import secrets
 from datetime import datetime, timezone
 from app import database as dbm
+from app.services import tracking
 from app.services.auth import hash_password
 
 
 def main():
     stamp = datetime.now(timezone.utc).isoformat()
-    for order in dbm.orders().find({"$or": [{"trackingToken": {"$exists": False}}, {"trackingToken": None}]}):
-        dbm.orders().update_one({"_id": order["_id"]}, {"$set": {"trackingToken": secrets.token_urlsafe(32), "updatedAt": stamp}})
+    tracking.ensure_tracking_tokens()
     for role, name in [("OWNER", "owner"), ("PRODUCTION_MANAGER", "manager"), ("WORKER_QC", "qc")]:
         password = os.getenv("SEED_" + role + "_PASSWORD")
         email = name + "@loomsense.demo"

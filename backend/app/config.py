@@ -37,5 +37,9 @@ REWORK_MATERIAL_LOSS_SHARE = 1.0
 # Public base URL of the frontend; the passport QR code points to {PASSPORT_BASE_URL}/passport/{rollId}
 PASSPORT_BASE_URL = os.getenv("PASSPORT_BASE_URL", "http://localhost:5173").rstrip("/")
 
+# Public base URL used in buyer tracking links: {TRACKING_BASE_URL}/track/{trackingToken}.
+# Defaults to PASSPORT_BASE_URL (the public frontend) when unset.
+TRACKING_BASE_URL = (os.getenv("TRACKING_BASE_URL") or PASSPORT_BASE_URL).rstrip("/")
+
 # Protects POST /api/demo/reset (header X-Admin-Key). Unset = the reset endpoint is disabled.
 ADMIN_KEY = os.getenv("ADMIN_KEY")

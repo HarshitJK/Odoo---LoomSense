@@ -156,7 +156,9 @@ print(f"QR code: {len(png)} bytes, {'valid PNG' if png[1:4] == b'PNG' else 'NOT 
 
 # ---------------------------------------------------------------- 8 buyer
 step(8, "Buyer tracking page (buyer-safe data only)")
-t = api("GET", "/api/buyer/track/" + api("GET", "/api/orders/ORD104")["trackingToken"])
+order104 = api("GET", "/api/orders/ORD104")
+print(f"Buyer link: {order104['trackingUrl']}")
+t = api("GET", "/api/buyer/track/" + order104["trackingToken"])
 print(f"Order {t['orderId']} for {t['buyerName']}: {t['quantityMeters']:,.0f} m {t['colour']} {t['fabricType']}")
 print(f"Progress {t['progress']}% | stage: {t['currentStage']} | quality: {t['qualityStatus']}"
       f" | dispatch: {t['dispatchStatus']} | expected {t['expectedCompletion']}")

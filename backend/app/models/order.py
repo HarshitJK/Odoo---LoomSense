@@ -1,7 +1,8 @@
 from typing import Optional
-import secrets
 
 from pydantic import BaseModel, Field
+
+from app.utils.tokens import new_tracking_token
 
 
 class OrderCosts(BaseModel):
@@ -13,7 +14,7 @@ class OrderCosts(BaseModel):
 
 
 class Order(BaseModel):
-    trackingToken: str = Field(default_factory=lambda: secrets.token_urlsafe(32))
+    trackingToken: str = Field(default_factory=new_tracking_token)
     orderId: str
     buyerId: Optional[str] = None
     buyerName: Optional[str] = None

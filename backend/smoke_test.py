@@ -141,6 +141,8 @@ results.append(png_ok)
 print(f"{'PASS' if png_ok else 'FAIL'}  GET   /api/passport/RL10092/qr  -> valid PNG")
 check("buyer track", "GET", "/api/buyer/track/" + call("GET", "/api/orders/ORD104")[1]["trackingToken"], test=lambda d: d["currentStage"] == "Weaving")
 check("buyer track 404", "GET", "/api/buyer/track/ORD999", expect=404)
+check("buyer track by order id 404", "GET", "/api/buyer/track/ORD104", expect=404)
+check("tracking link regenerate", "POST", "/api/orders/ORD104/tracking/regenerate", expect=200)
 check("transaction", "POST", "/api/transactions", 201, {"orderId": "ORD104", "amount": 1000},
       test=lambda d: d["order"]["paidAmount"] >= 1000)
 check("transaction 422", "POST", "/api/transactions", 422, {"amount": 0})

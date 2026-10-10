@@ -151,6 +151,7 @@ Copy `.env.example` to `backend/.env` (never commit it).
 | `DB_NAME` | backend | `loomsense` |
 | `CORS_ORIGINS` | backend | `http://localhost:5173` (add your deployed frontend URL) |
 | `PASSPORT_BASE_URL` | backend | `http://localhost:5173` (QR codes point here) |
+| `TRACKING_BASE_URL` | backend | defaults to `PASSPORT_BASE_URL` (buyer tracking links `/track/<token>` point here) |
 | `ADMIN_KEY` | backend | unset = `POST /api/demo/reset` disabled |
 | `SIMULATOR_AUTOSTART` | backend | `true` |
 | `VITE_API_URL` | frontend (`frontend/.env`) | `http://localhost:8000` |
@@ -209,7 +210,7 @@ That starts MongoDB, loads the demo data (only if the database is empty), then t
 | App | http://localhost:5173 |
 | API / docs | http://localhost:8000 · http://localhost:8000/docs |
 | MongoDB (Compass) | `mongodb://localhost:27017` |
-| Public pages | http://localhost:5173/passport/RL10092 · http://localhost:5173/track/ORD104 |
+| Public pages | http://localhost:5173/passport/RL10092 · the buyer link shown on the Orders page (`/track/<token>`; the seed prints the ORD104 link) |
 
 Stop with `docker compose down` (data stays in the `mongo-data` volume; `down -v` deletes it).
 
