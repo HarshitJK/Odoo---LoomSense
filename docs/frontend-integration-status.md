@@ -1,26 +1,38 @@
 # Frontend integration status
 
-State after merging `sabeetha` and `monica` into `main`, checked by reading the code and by loading every route in a headless
-browser against a seeded backend (`python -m app.seed`, API on :8000, `npm run dev` on :5173). "Fallback" means the page
-silently switches to mock data (or shows an offline banner) when the API call fails. Endpoints are described in [api.md](api.md).
+Every page now reads the live API. Each page was loaded in a headless browser against a seeded backend
+(`python -m app.seed`, API on :8000, `npm run dev` on :5173), and the numbers on screen were compared with the endpoint output.
+Endpoint details are in [api.md](api.md).
 
-| Page / route | Data source today | Endpoint it should use |
+## How data loading works
+- `src/hooks/useApi.js` returns `{ data, loading, error, reload }` for a GET endpoint. Pages use it instead of calling axios themselves.
+- If a call fails, the page shows `ApiErrorBanner` (endpoint, HTTP status or message, and a **Retry** button) and an empty state. It never falls back to mock data.
+- Mock data in `src/mocks/` is used **only** when `VITE_USE_MOCKS=true` (see `frontend/.env.example`, default `false`). Pages then show a "Using mock data" badge and make no API calls (except actions such as the readiness check, quality form and attendance form, which always call the API).
+
+## Pages
+
+| Page / route | Data source | Endpoints |
 |---|---|---|
-| `/` OwnerDashboard | **Mixed.** The order table reads `GET /api/orders` (fallback: `mocks/orders.js`). The KPI cards, revenue/cost chart, cost-breakdown chart and the profit-leakage panel come from `mocks/finance.js` (October shows ₹5,40,000 revenue, which is not in the database). | `GET /api/finance/dashboard` (`kpis`, `costBreakdown`, `mostProfitableOrder`, `leastProfitableOrder`, `orders`), `GET /api/finance/monthly` for the chart, `GET /api/finance/profit-leakage` for the panel. The dashboard `orders[]` also has `profit`, `margin`, `provisional`, `pendingAmount`, so the separate `/api/orders` call can go. |
-| `/orders` OrdersPage | Placeholder heading only. | `GET /api/orders`, plus `GET /api/orders/{id}/readiness` per row. |
-| `/inventory` InventoryPage | **API** `GET /api/inventory` (fallback: mock). It computes low stock itself. | Same endpoint; use the server's `lowStock` flag. |
-| Order readiness checker (on `/inventory`) | **Local calculation** over the inventory list, with its own guessed projections. | `POST /api/orders/readiness-check` with `{quantityMeters, colour, fabricType, expectedRevenue}`; it returns `requiredYarnKg`, `shortageKg`, `status`, projected costs and `projectedMargin`/`warning`. |
-| `/production` ProductionPage | **API** `GET /api/machines` once (fallback: mock), then a local fake timer adds metres every 3 s. The WebSocket hook is not used. The card shows "Order cost so far ₹0" and "₹0.00 / metre" because it computes cost as `costPerHour × runtimeHours` and the API field is `runtimeToday`. | `WS /ws/machines` through `hooks/useMachineSocket.js` (`snapshot`, `machine_update`, `event` messages; the hook currently keeps only the last message and assumes the old demo payload). Use the API's `orderMachineCost`, `costPerMeter`, `runtimeToday`, `estimatedCompletion`, `progress` instead of recomputing. Demo controls: `POST /api/machines/simulate`. |
-| `/workers` WorkersPage | **API** `GET /api/workers` (fallback: mock) for names, shifts and rates. Hours are set to 0, so every wage figure shows ₹0. Labour-cost-per-order cards and the insight banner use mock data. `POST /api/attendance` is wired for the form. | `GET /api/workers/wages/summary?month=YYYY-MM` for regular wages, overtime pay, total and `labourCostPerOrder[]`. Keep `GET /api/workers` for the list. |
-| `/quality` QualityPage | **API** `GET /api/quality` and `POST /api/quality` (fallback: mock). The form's order, machine and yarn-batch dropdowns are mock lists (`ORD098`, `YB79`, `YB88` do not exist in the database). The form never sends `affectedMeters`, so the server cannot calculate the cost impact, and `DefectCostImpact` computes its own number. | Dropdowns from `GET /api/orders`, `GET /api/machines`, `GET /api/inventory`. Send `affectedMeters` and show the response's `impact`, `marginBefore` and `marginAfter`. |
-| `/passport/:rollId` FabricPassportPage | **API** `GET /api/quality/{rollId}` (fallback: mock). This is the internal endpoint: it returns `reworkCost` and `impact`, and the page shows the production time as midnight because it reads `date`. | `GET /api/passport/{rollId}`: public, no cost fields, has `producedAt`, `qualityStatus`, `reworkStatus` and `buyerName`. The QR code can also come from `GET /api/passport/{rollId}/qr` (or be generated client-side with `qrcode.react`, as now). |
-| `/track`, `/track/:orderId` BuyerTrackingPage | **Mock only** (`mocks/buyerTracking.js`; shows ORD104 at 78% while the database says 73%). The sample links ORD098 / ORD091 are also mock ids. | `GET /api/buyer/track/{orderId}` (accepts `ORD104` or `ORD-104`; 404 `detail` is a friendly message). It returns `progress`, `currentStage`, `stages[]` (`DONE` / `IN_PROGRESS` / `PENDING`), `expectedCompletion`, `qualityStatus`, `dispatchStatus`. |
+| `/` OwnerDashboard | **Live API** | `GET /api/finance/dashboard` (KPIs, cost breakdown, most / least profitable), `GET /api/finance/monthly` (chart and trend arrows), `GET /api/finance/profit-leakage` (leakage panel), `GET /api/orders` (profit table) |
+| `/orders` OrdersPage | **Placeholder heading only** (no data, no mock) | Not built yet: needs `GET /api/orders` and `GET /api/orders/{id}/readiness` |
+| `/inventory` InventoryPage | **Live API** | `GET /api/inventory` (uses the server's `lowStock` flag) |
+| Readiness checker (on `/inventory`) | **Live API** | `POST /api/orders/readiness-check`; shows server validation errors |
+| `/production` ProductionPage | **Live API + WebSocket** | `GET /api/machines` for the first paint, then `WS /ws/machines` (`snapshot`, `machine_update`, `event`). Costs use the server's `orderMachineCost`, `costPerMeter` and `runtimeToday`. Shows Live / Reconnecting and the latest event |
+| `/workers` WorkersPage | **Live API** | `GET /api/workers` (monthly hours and wages), `GET /api/workers/wages/summary` (cards and labour cost per order), `GET /api/finance/profit-leakage` (insight banner), `GET /api/orders` and `GET /api/machines` (form options), `POST /api/attendance`; refetches after logging hours |
+| `/quality` QualityPage | **Live API** | `GET /api/quality`, `GET /api/orders`, `GET /api/inventory`, `GET /api/machines` (dropdowns), `POST /api/quality` (shows the server's `impact`, `marginBefore` → `marginAfter`) |
+| `/passport/:rollId` FabricPassportPage | **Live API (public)** | `GET /api/passport/{rollId}`; shows passport fields only. 404 shows "Roll Not Found" |
+| `/track`, `/track/:orderId` BuyerTrackingPage | **Live API (public)** | `GET /api/buyer/track/{orderId}`; accepts `ORD104` and `ORD-104`; 404 shows "Tracking ID Not Found" |
 
-## Notes for whoever wires this up
-- **Machine objects:** every field the production page needs is already in the API response. See "Machine object" in [api.md](api.md).
-- **IDs:** the backend uses `ORD104`, `RL10092`; display them with a hyphen in the UI if wanted.
-- **Money:** the API sends plain INR numbers; format them with `utils/formatCurrency.js`.
-- **Errors:** API errors are `{"detail": "text"}`; show `detail` directly.
-- **Offline fallback:** pages that silently fall back to mock data make a broken integration look fine. Prefer an error banner.
-- **Duplicate components:** `StatusBadge`, `ProgressBar` and `KpiCard` exist in more than one folder (`buyer/`, `quality/`, `workers/`). They were left as they are.
-- **Bundle:** the build prints a chunk-size warning (about 760 kB); routes can be lazy-loaded later.
+## Still not on the API, and why
+- **`/orders`** is only a heading. Nobody built the page; the data is available from the API.
+- **Defect names** in the quality form (`Weft break`, `Hole`, ...) are a fixed list in `QualityForm.jsx`; the API stores free text and has no endpoint for defect types.
+- **Order profit table** (`OrderProfitTable.jsx`) still adds up the cost lines itself (`trueOrderCost`) from `GET /api/orders`. The dashboard endpoint's `orders[]` has `totalCost` if it should be switched.
+- **"Total Metres Today"** on the production page sums each machine's `producedMeters`, which is the order total so far, not today's output.
+- **Mock files** (`src/mocks/*.js`) remain for `VITE_USE_MOCKS=true` only. In that mode the Workers page shows ₹0 wages (the old mock has no month totals).
+- **`src/utils/calculations.js`** is still used for machine progress in mock mode and for the profit table.
+
+## Notes
+- `api/quality.js` no longer has `fetchRollById`: the passport page uses the public endpoint (`api/passport.js`) so no cost fields reach it.
+- `GET /api/workers` gained `hoursThisMonth`, `overtimeThisMonth`, `wageThisMonth` (and an optional `?month=YYYY-MM`) for the Workers page.
+- Duplicate components (`StatusBadge`, `ProgressBar`, `KpiCard`) in `buyer/`, `quality/`, `workers/` were left as they are.
+- The production bundle is about 760 kB; routes can be lazy-loaded later.
