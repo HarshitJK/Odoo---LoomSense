@@ -11,7 +11,7 @@ import asyncio
 import logging
 import random
 import threading
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from app import database as dbm
 from app.config import SIMULATOR_AUTOSTART
@@ -131,6 +131,22 @@ def tick() -> tuple:
         return _tick()
 
 
+def incomplete(order) -> bool:
+    return bool(order and order.get("status") not in ("DISPATCHED", "COMPLETED")
+                and order.get("producedMeters", 0) < order.get("quantityMeters", 0))
+
+
+def _reset_daily_runtime():
+    today = datetime.now(timezone.utc).date().isoformat()
+    dbm.machines().update_many({"runtimeDate": {"$ne": today}},
+                              {"$set": {"runtimeToday": 0, "runtimeDate": today}})
+
+
+def _idle(machine, reason):
+    dbm.machines().update_one({"machineId": machine["machineId"]}, {"$set": {"status": "IDLE"}})
+    return event_message("machine_idle", reason, machine["machineId"], machine.get("currentOrderId"))
+
+
 def _complete_order(order_id: str, machine_id: str) -> dict:
     """Order reached its quantity: move it to QUALITY_CHECK, idle its machines, return the event."""
     dbm.orders().update_one({"orderId": order_id}, {"$set": {"status": "QUALITY_CHECK", "completedAt": now_iso()}})
@@ -167,6 +183,7 @@ def apply_reading(machine_id: str, reading: dict) -> tuple:
     Raises MachineNotFound.
     """
     with sim_lock:
+        _reset_daily_runtime()
         m = dbm.machines().find_one({"machineId": machine_id}, NO_ID)
         if not m:
             raise MachineNotFound(f"Machine {machine_id} not found")
@@ -176,20 +193,27 @@ def apply_reading(machine_id: str, reading: dict) -> tuple:
         delta = reading.get("producedMetersDelta") or 0
         order = dbm.orders().find_one({"orderId": m.get("currentOrderId")}, NO_ID) if m.get("currentOrderId") else None
         finished = False
+        if not incomplete(order):
+            if changes.get("status", m["status"]) == "RUNNING":
+                changes["status"] = "IDLE"
+            delta = 0
         gated = bool(order) and quality_gate.is_gated(order)
         if gated:
             order = quality_gate.prepare_for_production(order)
         # A gated order on hold, waiting for QC or first-off, or not weaving does not take new metres
         if delta and order and quality_gate.production_allowed(order):
             room = max(order["quantityMeters"] - order["producedMeters"], 0)
-            step = materials.consume(order, min(quality_gate.limit_for_first_off(order, delta), room))
+            rate = changes.get("productionRate", m.get("productionRate", 0))
+            daily_room = max(0, 24 - m.get("runtimeToday", 0)) * rate
+            step = materials.consume(order, min(quality_gate.limit_for_first_off(order, delta), room, daily_room))
             changes["producedMeters"] = round(m.get("producedMeters", 0) + step, 2)
             total = round(order["producedMeters"] + step, 2)
             dbm.orders().update_one({"orderId": order["orderId"]}, {"$set": {"producedMeters": total}})
             finished = not gated and step > 0 and total >= order["quantityMeters"]
             effective = {**m, **changes}
-            rate = effective.get("productionRate") or 1
-            production_history.record(effective, order, step, step / rate, reading.get("timestamp"), finished)
+            if step > 0:
+                production_history.record(effective, order, step, step / rate, reading.get("timestamp"), finished)
+                changes["runtimeToday"] = min(24, m.get("runtimeToday", 0) + step / rate)
             if gated:
                 events.extend(_gate_events(order["orderId"], machine_id))
         if changes:
@@ -206,6 +230,7 @@ def apply_reading(machine_id: str, reading: dict) -> tuple:
 
 def _tick() -> tuple:
     events, touched = [], set()
+    _reset_daily_runtime()
     speed = state["speed"]
     factory_hours = TICK_SECONDS * TIME_SCALE * speed / 3600
 
@@ -213,12 +238,18 @@ def _tick() -> tuple:
         m = dbm.machines().find_one({"machineId": machine_id}, NO_ID)
         if not m or m["status"] != "RUNNING":  # finished earlier in this tick
             continue
+        order = dbm.orders().find_one({"orderId": m.get("currentOrderId")}, NO_ID) if m.get("currentOrderId") else None
+        if not incomplete(order):
+            events.append(_idle(m, "No incomplete order to produce; machine is idle."))
+            continue
+        hours = min(factory_hours, max(0, 24 - m.get("runtimeToday", 0)))
+        if hours <= 0:
+            events.append(_idle(m, "Daily runtime limit reached; machine is idle until restarted."))
+            continue
         changes = {
             "temperature": round(random.uniform(55, 70), 1),
             "efficiency": round(random.uniform(0.85, 0.95), 2),
-            "runtimeToday": round(m.get("runtimeToday", 0) + factory_hours, 3),
         }
-        order = dbm.orders().find_one({"orderId": m.get("currentOrderId")}, NO_ID) if m.get("currentOrderId") else None
         finished = False
         step = 0
         gated = bool(order) and quality_gate.is_gated(order)
@@ -226,10 +257,9 @@ def _tick() -> tuple:
             order = quality_gate.prepare_for_production(order)
         # A gated order on hold, waiting for QC or first-off, or not weaving is left alone: no metres, no run time
         held = gated and not quality_gate.production_allowed(order)
-        if held:
-            changes.pop("runtimeToday", None)
         if order and not held and m.get("productionRate") and order["producedMeters"] < order["quantityMeters"]:
-            step = m["productionRate"] * factory_hours * random.uniform(0.6, 1.4)
+            effective_rate = m["productionRate"] * random.uniform(0.6, 1.4)
+            step = effective_rate * hours
             step = quality_gate.limit_for_first_off(order, step)
             step = materials.consume(order, min(step, order["quantityMeters"] - order["producedMeters"]))
             changes["producedMeters"] = round(m["producedMeters"] + step, 2)
@@ -237,8 +267,13 @@ def _tick() -> tuple:
             finished = not gated and order_total >= order["quantityMeters"]
             dbm.orders().update_one({"orderId": order["orderId"]}, {"$set": {"producedMeters": order_total}})
             touched.add(order["orderId"])
-        if not held:
-            production_history.record({**m, **changes}, order, round(step, 2), factory_hours, completed=finished)
+        if step > 0:
+            actual_hours = min(hours, step / effective_rate)
+            changes["runtimeToday"] = min(24, m.get("runtimeToday", 0) + actual_hours)
+            production_history.record({**m, **changes}, order, round(step, 2), actual_hours, completed=finished)
+        elif not held:
+            changes["status"] = "IDLE"
+            events.append(event_message("machine_idle", "No production possible; check material and production rate.", machine_id, order["orderId"]))
         dbm.machines().update_one({"machineId": machine_id}, {"$set": changes})
 
         if finished:
@@ -248,6 +283,11 @@ def _tick() -> tuple:
 
     for order_id in touched:
         profitability.refresh_order(order_id)
+    available = any(incomplete(dbm.orders().find_one({"orderId": m.get("currentOrderId")}))
+                    for m in dbm.machines().find({"status": "RUNNING"}))
+    if not available and state["running"]:
+        state["running"] = False
+        events.append(event_message("simulator_paused", "Simulator paused: no running machine has an incomplete order."))
     return events, get_snapshot()
 
 
@@ -284,6 +324,8 @@ def _start_machine(machine_id: str) -> None:
         raise MachineNotFound(f"Machine {machine_id} not found")
     if not machine.get("currentOrderId"):
         raise ValueError(f"Machine {machine_id} has no order assigned")
+    if not incomplete(dbm.orders().find_one({"orderId": machine["currentOrderId"]})):
+        raise ValueError(f"Machine {machine_id} has no incomplete order to produce")
     _set_status(machine_id, "RUNNING")
 
 
@@ -313,7 +355,7 @@ def reset(machine_id=None) -> None:
         if old:
             dbm.machines().update_one({"machineId": mid}, {"$set": {
                 "temperature": seeded[mid]["temperature"], "efficiency": seeded[mid]["efficiency"],
-                "status": "IDLE" if not old.get("currentOrderId") else seeded[mid]["status"]}})
+                "status": seeded[mid]["status"] if incomplete(dbm.orders().find_one({"orderId": old.get("currentOrderId")})) else "IDLE"}})
 
 
 async def control(action: str, machine_id=None, speed=None) -> dict:

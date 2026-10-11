@@ -30,6 +30,12 @@ async def lifespan(app: FastAPI):
         quality_gate.ensure_indexes()  # old quality records get an inspectionId, then the indexes are created
     except PyMongoError:
         log.warning("Could not prepare the orders.trackingToken index; MongoDB is not reachable yet")
+    try:
+        from app.data_checks import check_data
+        for anomaly in await asyncio.to_thread(check_data):
+            log.warning("Demo data anomaly: %s", anomaly)
+    except Exception:
+        log.warning("Demo data checks could not complete; run python -m app.data_checks", exc_info=True)
     machine_simulator.add_listener(machines_ws.manager.broadcast)
     task = asyncio.create_task(machine_simulator.run_forever())
     yield

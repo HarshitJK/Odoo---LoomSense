@@ -61,7 +61,7 @@ Machine object (same shape in REST and WebSocket):
 
 ### Simulator
 
-The simulator is an asyncio task inside the API process. Every 3 seconds each `RUNNING` machine advances by about `productionRate x 3 s / 3600 x 60` metres (2-8 m for the seeded machines; 1 real second counts as 1 factory minute), temperature is jittered between 55 and 70 and efficiency between 0.85 and 0.95. The linked order's `producedMeters` is updated and its machine cost, profit and margin are recomputed. When an order reaches `quantityMeters` it moves to `QUALITY_CHECK`, its machines go `IDLE`, and an `order_completed` event is sent. Set `SIMULATOR_AUTOSTART=false` to start it paused.
+The simulator is an asyncio task inside the API process. Every 3 seconds each `RUNNING` machine advances by about `productionRate x 3 s / 3600 x 60` metres (2-8 m for the seeded machines; 1 real second counts as 1 factory minute), temperature is jittered between 55 and 70 and efficiency between 0.85 and 0.95. The linked order's `producedMeters` is updated and its machine cost, profit and margin are recomputed. When an order reaches `quantityMeters` it moves to `QUALITY_CHECK`, its machines go `IDLE`, and an `order_completed` event is sent. The default is `SIMULATOR_AUTOSTART=false`; start explicitly at demo time. Completed/dispatched/unassigned machines idle without new cost. Runtime resets each UTC day and simulation pauses when no running machine has an incomplete order.
 
 `POST /api/machines/simulate`
 
@@ -265,11 +265,11 @@ Available stock = all inventory whose material is `<fabricType> Yarn` and whose 
 
 ## Finance
 
-Per-order figures use the full contract revenue against the cost so far, so an order still in production has `provisional: true` and a flattering margin. Monthly totals count revenue for in-progress orders pro-rata to `progressPercent`. Orders belong to the month of their `orderDate`.
+Per-order profit and margin use `earnedRevenue` (contract revenue times production progress). Incomplete orders have `provisional: true`; finished orders retain full-contract results. Monthly totals use dated production events and costs, not order creation dates. An empty-production month has a null margin and a no-production note.
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/api/finance/dashboard?month=2026-10` | Owner KPIs, cost breakdown, best/worst order, all orders (month defaults to the current month) |
+| GET | `/api/finance/dashboard?month=2026-10` | Owner KPIs, cost breakdown, best/worst order, all orders (month defaults to DEMO_MONTH when configured, otherwise the current month) |
 | GET | `/api/finance/monthly` | Revenue, cost, profit, margin for the last 4 months |
 | GET | `/api/finance/profit-leakage?order_id=ORD091` | Where an order lost profit; without `order_id`, the lowest-margin finished order |
 | GET | `/api/finance/orders/{order_id}` | Revenue, cost lines, profit, margin for one order |

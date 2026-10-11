@@ -1,5 +1,7 @@
 """App settings, read from environment variables (see backend/.env.example)."""
 import os
+import re
+from datetime import date
 
 from dotenv import load_dotenv
 
@@ -26,7 +28,13 @@ TARGET_MARGIN = 25.0          # factory target margin %, used for warnings and b
 EXPECTED_MARGIN = 28.0        # benchmark margin % used by profit leakage
 
 # Machine simulator runs inside the API process; set SIMULATOR_AUTOSTART=false to start it paused
-SIMULATOR_AUTOSTART = os.getenv("SIMULATOR_AUTOSTART", "true").lower() in ("1", "true", "yes")
+SIMULATOR_AUTOSTART = os.getenv("SIMULATOR_AUTOSTART", "false").lower() in ("1", "true", "yes")
+
+DEMO_MONTH = os.getenv("DEMO_MONTH", "").strip() or None
+if DEMO_MONTH:
+    if not re.fullmatch(r"\d{4}-\d{2}", DEMO_MONTH):
+        raise ValueError("DEMO_MONTH must have format YYYY-MM")
+    date.fromisoformat(DEMO_MONTH + "-01")
 
 # Rework cost impact of a failed / reworked roll (INR per affected metre)
 REWORK_LABOUR_PER_METRE = 9.2

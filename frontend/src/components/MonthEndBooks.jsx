@@ -14,8 +14,8 @@ import { formatMonth, formatPercent } from "../utils/format.js";
 
 // Behind a click on the dashboard: money in, costs and order results for one month.
 export default function MonthEndBooks() {
-  const [month, setMonth] = useState(new Date().toLocaleDateString("en-CA").slice(0, 7));
-  const { data: r, error, loading, reload } = useApi(`/api/finance/month-end?month=${month}`);
+  const [month, setMonth] = useState("");
+  const { data: r, error, loading, reload } = useApi(`/api/finance/month-end${month ? `?month=${month}` : ""}`);
 
   const lines = r && [
     ["Cash received from buyers", r.buyerPaymentsReceived],
@@ -34,7 +34,7 @@ export default function MonthEndBooks() {
             <Input
               type="month"
               required
-              value={month}
+              value={month || r?.month || ""}
               onChange={(e) => e.target.value && setMonth(e.target.value)}
               className="sm:w-48"
             />
@@ -48,7 +48,7 @@ export default function MonthEndBooks() {
         {r && !loading && (
           <>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <KpiCard title="Money received" value={money(r.totalCashIn)} subtitle={formatMonth(month)} />
+              <KpiCard title="Money received" value={money(r.totalCashIn)} subtitle={formatMonth(r.month)} />
               <KpiCard title="Costs" value={money(r.totalExpenses)} />
               <KpiCard
                 title="Result"
@@ -76,21 +76,21 @@ export default function MonthEndBooks() {
               <Table caption="Orders active this month">
                 <THead>
                   <Th>Order</Th>
-                  <Th align="right">Revenue</Th>
+                  <Th align="right">Earned revenue</Th>
                   <Th align="right">Cost</Th>
                   <Th align="right">Profit</Th>
                   <Th align="right">Margin</Th>
                 </THead>
                 <TBody>
                   {[...r.orderProfitability]
-                    .sort((a, b) => a.margin - b.margin)
+                    .sort((a, b) => Number(a.provisional) - Number(b.provisional) || a.margin - b.margin)
                     .map((o) => (
                       <Tr key={o.orderId}>
-                        <Td header>{o.orderId}</Td>
-                        <Td align="right">{money(o.revenue)}</Td>
+                        <Td header>{o.orderId}{o.provisional && <span className="block text-xs font-normal text-gray-500">In progress</span>}</Td>
+                        <Td align="right">{money(o.earnedRevenue ?? o.revenue)}</Td>
                         <Td align="right">{money(o.totalCost)}</Td>
                         <Td align="right">{money(o.profit)}</Td>
-                        <Td align="right" className={`font-medium ${marginClass(o.margin)}`}>
+                        <Td align="right" className={o.provisional ? "text-gray-500" : `font-medium ${marginClass(o.margin)}`}>
                           {formatPercent(o.margin)}
                         </Td>
                       </Tr>

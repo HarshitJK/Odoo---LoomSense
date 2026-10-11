@@ -83,7 +83,8 @@ def test_ord104_cost_adds_up_and_matches_stored_values():
     assert cost["costs"]["rework"] == 0
     order = client.get("/api/orders/ORD104").json()
     assert order["costs"] == cost["costs"]
-    assert order["profit"] == pytest.approx(order["revenue"] - cost["totalCost"], abs=0.01)
+    earned = order["revenue"] * min(order["producedMeters"] / order["quantityMeters"], 1)
+    assert order["profit"] == pytest.approx(earned - cost["totalCost"], abs=0.01)
 
 
 def test_wages_summary_adds_up():

@@ -53,6 +53,8 @@ def test_manager_hours_permissions():
 
 def test_seeded_months_and_accrual_basis():
     owner = login('OWNER')
+    from app.data_checks import check_data
+    assert check_data() == []
     for month in ('2026-07', '2026-08', '2026-09', '2026-10'):
         summary = profitability.monthly_summary(month)
         assert summary['margin'] >= -20, summary
@@ -72,6 +74,33 @@ def test_seeded_months_and_accrual_basis():
     november = profitability.monthly_summary('2026-11')
     assert november['revenue'] == 17800
     assert november['totalCost'] == 11220
+
+
+def test_frontend_read_endpoints_on_fresh_seed():
+    owner = login('OWNER')
+    paths = ['/api/orders', '/api/machines', '/api/inventory', '/api/workers?month=2026-10',
+             '/api/workers/wages/summary?month=2026-10', '/api/purchases',
+             '/api/quality', '/api/quality/options', '/api/quality/pending', '/api/quality/holds',
+             '/api/quality/analytics?month=2026-10', '/api/finance/dashboard?month=2026-10',
+             '/api/finance/monthly', '/api/finance/month-end?month=2026-10', '/api/finance/profit-leakage',
+             '/api/machines/monthly-summary?month=2026-10', '/api/passport/RL10092']
+    for order in dbm.orders().find({}):
+        oid = order['orderId']
+        paths.extend([f'/api/orders/{oid}', f'/api/orders/{oid}/readiness', f'/api/orders/{oid}/cost',
+                      f'/api/finance/orders/{oid}', f'/api/quality/order/{oid}/timeline',
+                      '/api/buyer/track/' + order['trackingToken']])
+    for path in paths:
+        ok(owner, 'GET', path)
+    for machine in ok(owner, 'GET', '/api/machines'):
+        if machine['status'] == 'RUNNING':
+            assert machine['estimatedCompletion'] is not None
+    for worker in ok(owner, 'GET', '/api/workers?month=2026-10'):
+        if not worker['hoursThisMonth'] and not worker['overtimeThisMonth']:
+            assert worker['wageThisMonth'] == 0
+    for event in dbm.db.machineProductionEvents.find({}):
+        order = dbm.orders().find_one({'orderId': event['orderId']})
+        assert event['timestamp'][:10] >= order['orderDate']
+    assert 15 <= profitability.monthly_summary('2026-10')['margin'] <= 45
 
 
 def test_complete_demo_story():

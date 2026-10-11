@@ -14,7 +14,7 @@ services:
       timeout: 5s
       retries: 20
 
-  # One-shot job: loads demo data only if the database is empty (FORCE_SEED=true reloads it)
+  # Demo-only seed job: refreshes empty databases or changed seed versions; FORCE_SEED always reloads.
   seed:
     build: ./backend
     command: ["python", "docker_seed.py"]
@@ -22,6 +22,7 @@ services:
       MONGODB_URI: ${MONGODB_URI:-mongodb://mongo:27017}
       DB_NAME: ${DB_NAME:-loomsense}
       FORCE_SEED: ${FORCE_SEED:-false}
+      AUTO_RESEED_ON_VERSION_CHANGE: ${AUTO_RESEED_ON_VERSION_CHANGE:-true}
       SEED_OWNER_PASSWORD: ${SEED_OWNER_PASSWORD:?Set SEED_OWNER_PASSWORD}
       SEED_PRODUCTION_MANAGER_PASSWORD: ${SEED_PRODUCTION_MANAGER_PASSWORD:?Set SEED_PRODUCTION_MANAGER_PASSWORD}
       SEED_WORKER_QC_PASSWORD: ${SEED_WORKER_QC_PASSWORD:?Set SEED_WORKER_QC_PASSWORD}
@@ -43,7 +44,8 @@ services:
       PASSPORT_BASE_URL: ${PASSPORT_BASE_URL:-http://localhost:5173}
       TRACKING_BASE_URL: ${TRACKING_BASE_URL:-}
       ADMIN_KEY: ${ADMIN_KEY:-change-me}
-      SIMULATOR_AUTOSTART: ${SIMULATOR_AUTOSTART:-true}
+      SIMULATOR_AUTOSTART: ${SIMULATOR_AUTOSTART:-false}
+      DEMO_MONTH: ${DEMO_MONTH:-2026-10}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET}
     depends_on:
       mongo:

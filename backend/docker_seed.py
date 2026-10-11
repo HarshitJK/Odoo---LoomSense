@@ -1,8 +1,8 @@
-"""One-shot seed job for Docker: load demo data only when the database is empty.
+"""One-shot seed job: empty database, explicit force, or opted-in seed-version upgrade.
 
     python docker_seed.py          (FORCE_SEED=true reloads even if data exists)
 
-Waits for MongoDB, then exits 0, so restarting the stack never wipes data entered by hand.
+Version upgrades are opt-in outside the demo compose configuration.
 """
 import os
 import sys
@@ -23,11 +23,15 @@ def main():
 
     force = os.getenv("FORCE_SEED", "false").lower() in ("1", "true", "yes")
     existing = dbm.orders().count_documents({})
-    if existing and not force:
+    stored = (dbm.db.meta.find_one({"_id": "seed"}) or {}).get("seedVersion")
+    auto = os.getenv("AUTO_RESEED_ON_VERSION_CHANGE", "false").lower() in ("1", "true", "yes")
+    upgrade = auto and stored != seed.SEED_VERSION
+    if existing and not force and not upgrade:
         print(f"Database already has {existing} orders: skipping seed (set FORCE_SEED=true to reload).", flush=True)
         migrate.main()
         return
-    print("Loading demo data ..." if not existing else "FORCE_SEED=true: reloading demo data ...", flush=True)
+    reason = "empty database" if not existing else "FORCE_SEED=true" if force else f"seed version {stored} -> {seed.SEED_VERSION}"
+    print(f"Loading demo data ({reason}) ...", flush=True)
     seed.main()
 
 

@@ -153,7 +153,9 @@ Copy `.env.example` to `backend/.env` (never commit it).
 | `PASSPORT_BASE_URL` | backend | `http://localhost:5173` (QR codes point here) |
 | `TRACKING_BASE_URL` | backend | defaults to `PASSPORT_BASE_URL` (buyer tracking links `/track/<token>` point here) |
 | `ADMIN_KEY` | backend | unset = `POST /api/demo/reset` disabled |
-| `SIMULATOR_AUTOSTART` | backend | `true` |
+| `SIMULATOR_AUTOSTART` | backend | `false`; start explicitly at demo time |
+| `DEMO_MONTH` | backend | optional `YYYY-MM`; demo compose defaults to `2026-10` |
+| `AUTO_RESEED_ON_VERSION_CHANGE` | seed job | `true` in demo compose, `false` otherwise |
 | `VITE_API_URL` | frontend (`frontend/.env`) | `http://localhost:8000` |
 
 ## Run the backend
@@ -203,7 +205,7 @@ Keep exactly one instance: the machine simulator and WebSocket connections live 
 docker compose up --build
 ```
 
-That starts MongoDB, loads the demo data (only if the database is empty), then the backend and the frontend. No `.env` file is needed.
+Configure the required credentials in `.env` first. This starts MongoDB, loads demo data into an empty database (or refreshes a changed seed version when enabled), then starts the backend and frontend. The simulator starts paused.
 
 | What | URL |
 |---|---|
@@ -215,7 +217,7 @@ That starts MongoDB, loads the demo data (only if the database is empty), then t
 Stop with `docker compose down` (data stays in the `mongo-data` volume; `down -v` deletes it).
 
 ### Machine data: two modes
-- **Simulator mode (default).** The built-in simulator moves the seeded machines, so `/production` and the WebSocket update right after start.
+- **Simulator mode (default).** The built-in simulator starts paused. At demo time, start it through `POST /api/machines/simulate` with an owner/manager token and `{ "action": "start", "speed": 1 }`. Use speed control during the presentation; it pauses automatically when no running machine has incomplete work.
 - **Feeder mode.** Shows "real machines send data to LoomSense": `backend/machine_feeder.py` replays `backend/sample_data/machine_readings.json` (30 readings; W04 goes DOWN, W01 finishes ORD104) to `POST /api/machines/{id}/readings`. The simulator must be off, otherwise both would move the same machines:
   ```bash
   SIMULATOR_AUTOSTART=false docker compose --profile feeder up --build
@@ -223,7 +225,7 @@ Stop with `docker compose down` (data stays in the `mongo-data` volume; `down -v
   (PowerShell: `$env:SIMULATOR_AUTOSTART="false"; docker compose --profile feeder up --build`, or put `SIMULATOR_AUTOSTART=false` in `.env`.) `FEEDER_DELAY_SECONDS` sets the pause between readings.
 
 ### Resetting the demo data
-- `docker compose run --rm -e FORCE_SEED=true seed` reloads the demo data (the normal start never overwrites data entered by hand).
+- `docker compose run --rm -e FORCE_SEED=true seed` reloads the demo data (stop the backend first so a running tick cannot overlap the seed; restart afterwards). Changed seed versions also reset demo data when `AUTO_RESEED_ON_VERSION_CHANGE=true`.
 - Or `curl -X POST http://localhost:8000/api/demo/reset -H "X-Admin-Key: change-me"` (uses `ADMIN_KEY`).
 
 ### Phone on the same wifi (passports, buyer tracking)

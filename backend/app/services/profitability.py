@@ -1,9 +1,8 @@
 """Profit, margin, monthly trend and profit-leakage logic.
 
 Profit = revenue - true order cost.  Margin % = profit / revenue x 100.
-Per-order revenue is the full contract revenue; cost is what has been spent so far, so an
-order still in production (`provisional: true`) shows a flattering margin. Monthly totals
-therefore count revenue for in-progress orders pro-rata to their progress.
+Contract revenue remains available; profit and margin use earned revenue for incomplete
+orders. Monthly totals use dated production events.
 
 Functions that look at many orders take an optional `data` dict (see costing.load_data)
 so one request does not repeat the same database queries for every order.
@@ -11,7 +10,7 @@ so one request does not repeat the same database queries for every order.
 from datetime import date
 
 from app import database as dbm
-from app.config import EXPECTED_MARGIN, TARGET_MARGIN, YARN_KG_PER_METRE
+from app.config import DEMO_MONTH, EXPECTED_MARGIN, TARGET_MARGIN, YARN_KG_PER_METRE
 from app.services import costing
 
 MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
@@ -31,17 +30,19 @@ def order_profit(order_id: str, data: dict = None) -> dict:
     order = costing.get_order(order_id, data)
     cost = costing.calculate_order_cost(order_id, data)
     revenue = order.get("revenue", 0)
-    profit = calculate_profit(revenue, cost["totalCost"])
-    margin = calculate_margin(revenue, profit)
     paid = round(sum(t["amount"] for t in data["transactions"] if t.get("orderId") == order_id), 2)
     quantity = order.get("quantityMeters", 0)
     progress = round(order.get("producedMeters", 0) / quantity * 100, 1) if quantity else 0.0
+    earned = round(revenue * min(order.get("producedMeters", 0) / quantity, 1), 2) if quantity else 0
+    profit = calculate_profit(earned, cost["totalCost"])
+    margin = calculate_margin(earned, profit)
     return {
         "orderId": order_id,
         "buyerName": order.get("buyerName"),
         "status": order.get("status"),
         "orderDate": order.get("orderDate"),
         "revenue": revenue,
+        "earnedRevenue": earned,
         "costs": cost["costs"],
         "totalCost": cost["totalCost"],
         "profit": profit,
@@ -109,12 +110,14 @@ def monthly_summary(month: str, profits: list = None) -> dict:
     revenue = r["productionValue"]
     profit = calculate_profit(revenue, cost)
     return {"month": month, "label": month_label(month), "revenue": revenue,
-        "totalCost": cost, "profit": profit, "margin": calculate_margin(revenue, profit),
+        "totalCost": cost, "profit": profit,
+        "margin": calculate_margin(revenue, profit) if r["productionOverview"]["producedMeters"] > 0 else None,
+        "note": None if r["productionOverview"]["producedMeters"] > 0 else "No production recorded this month",
         "orderCount": r["productionOverview"]["totalOrders"], "costBreakdown": breakdown}
 
 
 def last_months(count: int = 4, today: date = None) -> list:
-    today = today or date.today()
+    today = today or (date.fromisoformat(DEMO_MONTH + "-01") if DEMO_MONTH else date.today())
     year, month = today.year, today.month
     months = []
     for _ in range(count):

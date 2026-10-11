@@ -9,7 +9,8 @@ import { formatPercent } from "../../utils/format.js";
  * orders: array from GET /api/orders
  */
 export default function OrderProfitTable({ orders }) {
-  const sorted = [...orders].sort((a, b) => (a.margin ?? Infinity) - (b.margin ?? Infinity));
+  const inProgress = (o) => o.provisional ?? (o.producedMeters < o.quantityMeters);
+  const sorted = [...orders].sort((a, b) => Number(inProgress(a)) - Number(inProgress(b)) || (a.margin ?? Infinity) - (b.margin ?? Infinity));
   const limiter = useRowLimit(sorted, 5);
 
   return (
@@ -18,7 +19,7 @@ export default function OrderProfitTable({ orders }) {
         <THead>
           <Th>Order</Th>
           <Th>Buyer</Th>
-          <Th align="right">Revenue</Th>
+          <Th align="right">Earned revenue</Th>
           <Th align="right">Profit</Th>
           <Th align="right">Margin</Th>
         </THead>
@@ -27,12 +28,13 @@ export default function OrderProfitTable({ orders }) {
             const hasData = order.profit !== null && order.profit !== undefined;
             return (
               <Tr key={order.orderId}>
-                <Td header>{order.orderId}</Td>
+                <Td header>{order.orderId}{inProgress(order) && <span className="block text-xs font-normal text-gray-500">In progress</span>}</Td>
                 <Td>{order.buyerName}</Td>
-                <Td align="right">{formatCurrency(order.revenue)}</Td>
+                <Td align="right">{formatCurrency(order.earnedRevenue ?? (inProgress(order) ? order.revenue * order.producedMeters / order.quantityMeters : order.revenue))}</Td>
                 <Td align="right">{hasData ? formatCurrency(order.profit) : "Pending"}</Td>
-                <Td align="right" className={hasData ? `font-medium ${marginClass(order.margin)}` : "text-gray-500"}>
+                <Td align="right" className={hasData && !inProgress(order) ? `font-medium ${marginClass(order.margin)}` : "text-gray-500"}>
                   {hasData ? formatPercent(order.margin) : "Pending"}
+                  {inProgress(order) && <span className="block text-xs">Provisional</span>}
                 </Td>
               </Tr>
             );

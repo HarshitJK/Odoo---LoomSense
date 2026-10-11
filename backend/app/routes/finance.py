@@ -2,7 +2,7 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 
-from app.config import TARGET_MARGIN
+from app.config import DEMO_MONTH, TARGET_MARGIN
 from app.services import costing, profitability
 from app.utils.validation import valid_month
 
@@ -12,7 +12,7 @@ router = APIRouter()
 @router.get("/dashboard")
 def finance_dashboard(month: Optional[str] = None):
     """Owner KPIs for a month (default: current month). Orders list covers all orders."""
-    month = valid_month(month)
+    month = valid_month(month or DEMO_MONTH)
     data = costing.load_data()  # one batch of queries shared by every calculation below
     profits = profitability.all_order_profits(data)
     summary = profitability.monthly_summary(month)
@@ -23,6 +23,7 @@ def finance_dashboard(month: Optional[str] = None):
     return {
         "month": month,
         "label": summary["label"],
+        "note": summary["note"],
         "targetMargin": TARGET_MARGIN,
         "kpis": {
             "revenue": summary["revenue"],
@@ -68,9 +69,9 @@ def finance_order(order_id: str):
 
 
 @router.get("/month-end")
-def month_end(month: str):
+def month_end(month: Optional[str] = None):
     from app.services.month_end import report
-    return report(month)
+    return report(valid_month(month or DEMO_MONTH))
 
 
 from datetime import date, datetime, timezone

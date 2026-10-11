@@ -15,6 +15,8 @@ from app.models.transaction import Transaction
 from app.models.worker import Worker
 from app.services import profitability, quality_gate, tracking
 
+SEED_VERSION = "2026-10-11.2"
+
 REV = {"ORD071": 270000, "ORD078": 295000, "ORD085": 157000, "ORD091": 213000,
        "ORD104": 356000, "ORD108": 285000}
 
@@ -22,14 +24,14 @@ MACHINES = [
     # id, status, order, rate, produced, target, temp, costPerHour, efficiency
     ("W01", "RUNNING", "ORD104", 112, 1460, 2000, 61.0, 600, 0.91),
     ("W02", "RUNNING", "ORD108", 105, 400, 835, 58.5, 580, 0.88),
-    ("W03", "RUNNING", "ORD091", 84, 1200, 1200, 66.2, 650, 0.74),
+    ("W03", "IDLE", "ORD091", 84, 1200, 1200, 66.2, 650, 0.74),
     ("W04", "RUNNING", "ORD108", 98, 360, 765, 60.1, 520, 0.85),
     ("W05", "IDLE", None, 0, 0, 0, 31.0, 450, 0.0),
     ("W06", "DOWN", None, 0, 0, 0, 28.0, 700, 0.0),
 ]
 
-# Hours each machine has run today (simulator adds to this)
-RUNTIME_TODAY = {"W01": 6.5, "W02": 5.2, "W03": 7.8, "W04": 4.1, "W05": 2.0, "W06": 0.0}
+# Runtime starts at zero on reset; historic production remains in its dated events.
+RUNTIME_TODAY = {m[0]: 0 for m in MACHINES}
 
 INVENTORY = [
     ("YB82", "Cotton Yarn", "Navy Blue", 950, 180, "Supplier A", "2026-10-01"),
@@ -109,11 +111,12 @@ WORK = [
 
 
 def build_machines():
-    return [Machine(
+    return [{**Machine(
         machineId=m[0], name=f"Weaving Machine {m[0][1:]}", type="WEAVING", status=m[1],
         currentOrderId=m[2], productionRate=m[3], producedMeters=m[4], targetMeters=m[5],
         temperature=m[6], costPerHour=m[7], efficiency=m[8],
-        runtimeToday=RUNTIME_TODAY[m[0]]).model_dump() for m in MACHINES]
+        runtimeToday=RUNTIME_TODAY[m[0]]).model_dump(),
+        "runtimeDate": datetime.now(timezone.utc).date().isoformat()} for m in MACHINES]
 
 
 def build_orders():
@@ -191,6 +194,8 @@ def main():
     for order_id in quality_orders:
         p = profitability.refresh_order(order_id)
         print(f"  {order_id}: revenue {p['revenue']:,.0f}  cost {p['totalCost']:,.0f}  margin {p['margin']}%  (quality demo)")
+    dbm.db.meta.update_one({"_id": "seed"}, {"$set": {"seedVersion": SEED_VERSION,
+                           "seededAt": datetime.now(timezone.utc).isoformat()}}, upsert=True)
     return counts
 
 
@@ -220,6 +225,8 @@ def seed_financial_history():
                 "cost": kg * batches[o["yarnBatch"]]["costPerKg"]})
         dbm.orders().update_one({"orderId": o["orderId"]}, {"$set": {"productionHistoryComplete": True,
             "materialHistoryComplete": True, "createdAt": o["orderDate"] + "T00:00:00", "updatedAt": datetime.now(timezone.utc).isoformat()}})
+        if o["status"] == "DISPATCHED":
+            dbm.orders().update_one({"orderId": o["orderId"]}, {"$set": {"dispatchedAt": o["deadline"]}})
     for i, batch in enumerate(batches.values()):
         amount = batch["quantityKg"] * batch["costPerKg"]
         paid = amount if i % 2 == 0 else amount / 2

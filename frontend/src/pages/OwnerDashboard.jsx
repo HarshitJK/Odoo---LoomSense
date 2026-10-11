@@ -58,9 +58,9 @@ export default function OwnerDashboard() {
           <KpiCard title="Net profit" value={formatCurrency(kpis.netProfit)} />
           <KpiCard
             title="Profit margin"
-            value={formatPercent(kpis.profitMargin)}
-            subtitle={`Target ${d.targetMargin}%`}
-            valueClassName={marginClass(kpis.profitMargin)}
+            value={kpis.profitMargin == null ? "Not available" : formatPercent(kpis.profitMargin)}
+            subtitle={d.note || `Target ${d.targetMargin}%`}
+            valueClassName={kpis.profitMargin == null ? "text-gray-600" : marginClass(kpis.profitMargin)}
           />
         </div>
       )}
@@ -77,7 +77,7 @@ export default function OwnerDashboard() {
         </div>
       )}
 
-      {orders.data && <OrderProfitTable orders={orders.data} />}
+      {(d?.orders || orders.data) && <OrderProfitTable orders={d?.orders || orders.data} />}
 
       {leakage.data && <ProfitLeakagePanel leakage={leakage.data} />}
 

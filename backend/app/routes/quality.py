@@ -51,6 +51,11 @@ def create_roll(body: QualityCreate, user=Depends(current_user)):
         order = dbm.orders().find_one({"orderId": data["orderId"]}, NO_ID)
         if not order:
             raise HTTPException(404, f"Order {data['orderId']} not found")
+        if order.get("status") == "DISPATCHED":
+            raise HTTPException(409, "Cannot create an inspection for a dispatched order")
+    if not data.get("shift"):
+        hour = datetime.now().hour
+        data["shift"] = "A" if 6 <= hour < 14 else "B" if 14 <= hour < 22 else "C"
     # A stage-gated order (or a body with a stage or type) is a stage inspection; the stage defaults to the order's own
     if data["stage"] or data["inspectionType"] or data["reinspectionOf"] or quality_gate.is_gated(order):
         rec, margin_before, margin_after = quality_gate.create_inspection(data, user)
@@ -108,7 +113,7 @@ def quality_options():
                "yarnBatch": o.get("yarnBatch"),
                **{k: v for k, v in quality_gate.gate_view(o).items()
                   if k in ("gated", "currentStage", "stageStatus", "pendingInspectionType", "sampleMeters")}}
-              for o in dbm.orders().find({}, NO_ID).sort("orderId", 1)]
+              for o in dbm.orders().find({"status": {"$ne": "DISPATCHED"}}, NO_ID).sort("orderId", 1)]
     return {"orders": orders,
             "machines": list(dbm.machines().find({}, {"_id": 0, "machineId": 1, "name": 1})),
             "batches": list(dbm.inventory().find({}, {"_id": 0, "batchId": 1, "material": 1, "colour": 1}))}

@@ -6,6 +6,7 @@ import LoadingBlock from "../components/common/LoadingBlock.jsx";
 import Notice from "../components/common/Notice.jsx";
 import PageHeader from "../components/common/PageHeader.jsx";
 import PublicPage from "../components/common/PublicPage.jsx";
+import PublicBack from "../components/common/PublicBack.jsx";
 import OrderSummaryCard from "../components/buyer/OrderSummaryCard.jsx";
 
 /** Keeps search engines away from private tracking pages while the page is shown. */
@@ -50,7 +51,7 @@ export default function BuyerTrackingPage() {
 
   if (!token) {
     return (
-      <PublicPage>
+      <PublicPage action={<PublicBack authenticatedOnly />}>
         <PageHeader title="Order tracking" subtitle="Follow your order with the link from your supplier." />
         <Notice tone="info">Tracking is available through the link your supplier sent you. Open that link to see your order.</Notice>
       </PublicPage>
@@ -59,7 +60,7 @@ export default function BuyerTrackingPage() {
 
   if (state.status === "loading") {
     return (
-      <PublicPage>
+      <PublicPage action={<PublicBack authenticatedOnly />}>
         <LoadingBlock label="Loading your order" height="h-40" />
       </PublicPage>
     );
@@ -67,7 +68,7 @@ export default function BuyerTrackingPage() {
 
   if (state.status === "invalid") {
     return (
-      <PublicPage>
+      <PublicPage action={<PublicBack authenticatedOnly />}>
         <PageHeader title="Order tracking" />
         <Notice tone="error">This tracking link is not valid or has been replaced. Please contact your supplier.</Notice>
       </PublicPage>
@@ -76,7 +77,7 @@ export default function BuyerTrackingPage() {
 
   if (state.status === "error") {
     return (
-      <PublicPage>
+      <PublicPage action={<PublicBack authenticatedOnly />}>
         <PageHeader title="Order tracking" />
         <Notice
           tone="error"
@@ -89,7 +90,7 @@ export default function BuyerTrackingPage() {
   }
 
   return (
-    <PublicPage>
+    <PublicPage action={<PublicBack authenticatedOnly />}>
       <PageHeader title="Your order" subtitle="Where your order is right now." />
       <OrderSummaryCard order={state.order} />
     </PublicPage>

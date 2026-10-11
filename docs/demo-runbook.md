@@ -3,6 +3,59 @@
 A 12-step judge walkthrough for a live demo. Three logins required: owner, production manager,
 and QC inspector. Reset between runs with `POST /api/demo/reset` or `python -m app.seed`.
 
+## Before every presentation (including after deploying a fix)
+
+Use a fresh seed; restarting an unchanged image does not repair old data. Configure
+`SIMULATOR_AUTOSTART=false` and `DEMO_MONTH=2026-10` in the deployment environment,
+including on EC2. Existing `.env` values override compose defaults, so update an old
+`SIMULATOR_AUTOSTART=true` setting explicitly. Keep one backend process.
+
+For Docker, pause the backend before replacing the data, then restart it:
+
+```bash
+docker compose stop backend
+docker compose run --rm -e FORCE_SEED=true seed
+docker compose up -d backend
+docker compose exec backend python -m app.data_checks
+```
+
+The last command must print `Data checks: clean (0 anomalies)`. It exits non-zero
+on anomalies and never repairs data itself. Startup also logs warnings without
+blocking the API. Run the reset again after deploying the corrected image.
+
+Alternatively, call `POST /api/demo/reset` with both an owner Bearer token and
+`X-Admin-Key`. The endpoint pauses database writes during reseeding. It requires
+the configured `ADMIN_KEY`; it is not a public endpoint.
+
+The seed job stores `seedVersion` in the `meta` collection. With
+`AUTO_RESEED_ON_VERSION_CHANGE=true` (demo compose default), a different or missing
+version causes a fresh seed. Set it to `false` to retain manual entries; outside
+demo compose it defaults to false. `FORCE_SEED=true` always reloads. Users are
+retained; configured demo users are updated as before.
+
+`DEMO_MONTH` accepts `YYYY-MM` and pins dashboard, chart and month-end default months.
+Explicit month queries still win. It does not change timestamps of live activity.
+Unset it outside the demo to use the server's current month (compose's demo default
+is October 2026). An empty-production month displays “Not available” and
+“No production recorded this month”, not a red 0% margin.
+
+At the beginning of the presentation, start the simulator using the authenticated
+speed-control request below. Use 1x initially and 10x–25x to advance a demonstration.
+Even 1x is accelerated: one real minute equals one factory hour. Stop it when the
+presentation ends. It pauses automatically when no RUNNING machine has an incomplete
+order. W03 starts IDLE on completed-production ORD091, preserving the 17.2% margin
+and the 28% expected-margin leakage story. Runtime resets each UTC calendar day;
+machines reaching 24 factory hours idle until restarted, so a fast demo cannot run
+unboundedly in a single day. A material shortage idles a machine without charging time.
+
+Historical inspections before a known dispatch remain valid. New inspections on
+DISPATCHED orders return 409. Missing shifts use the server's inspection hour:
+A 06:00–14:00, B 14:00–22:00, C 22:00–06:00. Supplied shifts are retained.
+
+Check `/passport/RL10092` from Quality: Back should return to Quality. Direct
+signed-in visits fall back to Quality; anonymous direct QR visits have no Back
+control. Empty metadata rows are omitted and no financial data is exposed.
+
 ## Accounts
 
 | Login                        | Password      | Role               |
@@ -202,7 +255,7 @@ POST /api/machines/simulate
 {"action": "start", "speed": 25}
 ```
 
-To return to real-time:
+To return to the base demo speed (still 60 times real time):
 ```bash
 POST /api/machines/simulate
 {"action": "start", "speed": 1}
