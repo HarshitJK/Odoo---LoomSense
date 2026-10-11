@@ -36,7 +36,8 @@ def order_profit(order_id: str, data: dict = None) -> dict:
     earned = round(revenue * min(order.get("producedMeters", 0) / quantity, 1), 2) if quantity else 0
     profit = calculate_profit(earned, cost["totalCost"])
     margin = calculate_margin(earned, profit)
-    return {
+    cancelled = order.get("status") == "CANCELLED"
+    result = {
         "orderId": order_id,
         "buyerName": order.get("buyerName"),
         "status": order.get("status"),
@@ -48,14 +49,27 @@ def order_profit(order_id: str, data: dict = None) -> dict:
         "profit": profit,
         "margin": margin,
         "paidAmount": paid,
-        "pendingAmount": round(max(revenue - paid, 0), 2),
+        "pendingAmount": 0 if cancelled else round(max(revenue - paid, 0), 2),
         "targetMargin": TARGET_MARGIN,
         "belowTarget": bool(revenue) and margin < TARGET_MARGIN,
         "progressPercent": progress,
-        "provisional": progress < 100,
+        "provisional": progress < 100 or cancelled,  # a cancelled order is never completed revenue
         "labourHours": cost["labourHours"],
         "workerCount": cost["workerCount"],
+        "cancelled": cancelled,
     }
+    if cancelled:
+        result["cancellation"] = cancellation_summary(order, revenue, earned, cost["totalCost"], data)
+    return result
+
+
+def cancellation_summary(order: dict, revenue: float, earned: float, total_cost: float, data: dict) -> dict:
+    """What a cancelled order lost. Recoverable material is only yarn explicitly returned to stock."""
+    recoverable = round(sum(r.get("value", 0) for r in data.get("materialReturns", []) if r.get("orderId") == order["orderId"]), 2)
+    return {"estimatedOrderValue": revenue, "earnedRevenue": earned, "actualCostIncurred": total_cost,
+            "recoverableMaterialValue": recoverable, "writeOffLoss": round(max(total_cost - recoverable, 0), 2),
+            "stoppedAtStage": order.get("cancelledAtStage"), "producedMeters": order.get("producedMeters", 0),
+            "cancelledAt": order.get("cancelledAt"), "cancelledBy": order.get("cancelledBy"), "reason": order.get("cancelReason")}
 
 
 def refresh_order(order_id: str) -> dict:

@@ -51,6 +51,8 @@ def create_roll(body: QualityCreate, user=Depends(current_user)):
         order = dbm.orders().find_one({"orderId": data["orderId"]}, NO_ID)
         if not order:
             raise HTTPException(404, f"Order {data['orderId']} not found")
+        if order.get("status") == "CANCELLED":
+            raise HTTPException(409, "Order is already cancelled.")
         if order.get("status") == "DISPATCHED":
             raise HTTPException(409, "Cannot create an inspection for a dispatched order")
     if not data.get("shift"):

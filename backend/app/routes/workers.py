@@ -61,6 +61,8 @@ def create_worker(body: Worker):
 def log_attendance(body: Attendance, user=Depends(current_user)):
     if not dbm.workers().find_one({"workerId": body.workerId}):
         raise HTTPException(404, f"Worker {body.workerId} not found")
+    if body.orderId and (dbm.orders().find_one({"orderId": body.orderId}, NO_ID) or {}).get("status") == "CANCELLED":
+        raise HTTPException(409, "Order is already cancelled.")
     doc = body.model_dump()
     doc["hourlyRate"] = dbm.workers().find_one({"workerId": body.workerId})["hourlyRate"]
     doc["date"] = doc["date"] or date.today().isoformat()

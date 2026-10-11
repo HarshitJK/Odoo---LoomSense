@@ -92,7 +92,9 @@ def track_order(order: dict) -> dict:
         message = "Quality approved" if quality == "PASSED" else "Quality verification in progress"
         stages = build_stages(order.get("status", ""), progress)
     in_progress = [s["name"] for s in stages if s["state"] == "IN_PROGRESS"]
-    return {
+    cancelled = order.get("status") == "CANCELLED"
+    paused = not cancelled and order.get("stageStatus") == "PAUSED"
+    view = {
         "orderId": order["orderId"],
         "buyerName": order.get("buyerName"),
         "fabricType": order.get("fabricType"),
@@ -101,11 +103,15 @@ def track_order(order: dict) -> dict:
         "progress": progress,
         "currentStage": in_progress[0] if in_progress else "Dispatched",
         "stages": stages,
-        "expectedCompletion": order.get("deadline"),
+        "expectedCompletion": None if cancelled else order.get("deadline"),
         "qualityStatus": quality,
         "qualityMessage": message,  # "Quality verification in progress" | "Rework verification" | "Quality approved" | None
-        "dispatchStatus": dispatch_status(order.get("status", "")),
+        "dispatchStatus": "NOT_DISPATCHED" if cancelled else dispatch_status(order.get("status", "")),
     }
+    if cancelled or paused:  # extra keys appear only for these two states; nothing internal is added
+        view.update(orderStatus="CANCELLED" if cancelled else "PAUSED",
+                    statusMessage="Order cancelled" if cancelled else "Production temporarily paused")
+    return view
 
 
 def default_rework_status(quality: str) -> str:

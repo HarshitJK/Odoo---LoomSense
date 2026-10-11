@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -86,3 +86,32 @@ class ReadinessRequest(BaseModel):
     colour: str
     fabricType: str
     expectedRevenue: float = Field(default=0, ge=0)
+
+
+PauseReason = Literal["MACHINE_BREAKDOWN", "MAINTENANCE", "MATERIAL_SHORTAGE", "QUALITY_ISSUE", "OPERATOR_UNAVAILABLE", "MANUAL", "OTHER"]
+CancelReason = Literal["BUYER_CANCELLED", "MATERIAL_ISSUE", "PRODUCTION_DEFECT", "MACHINE_LIMITATIONS", "COMMERCIAL_DECISION",
+                       "DUPLICATE_ORDER", "OTHER"]
+
+
+class PauseRequest(BaseModel):
+    """Body for POST /api/orders/{id}/pause."""
+    reason: PauseReason
+    notes: Optional[str] = Field(default=None, max_length=1000)
+
+
+class ResumeRequest(BaseModel):
+    """Body for POST /api/orders/{id}/resume. Without machineId the paused machine(s) are used again."""
+    machineId: Optional[str] = None
+
+
+class ChangeMachineRequest(BaseModel):
+    """Body for POST /api/orders/{id}/change-machine."""
+    newMachineId: str = Field(min_length=1)
+    reason: PauseReason
+    notes: Optional[str] = Field(default=None, max_length=1000)
+
+
+class CancelRequest(BaseModel):
+    """Body for POST /api/orders/{id}/cancel."""
+    reason: CancelReason
+    notes: Optional[str] = Field(default=None, max_length=1000)

@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException
 from app import database as dbm
 from app.models.machine import MachineReading, MachineUpdate, SimulateRequest
 from app.services import machine_simulator as simulator
-from app.services import profitability
+from app.services import machine_sessions, profitability
 
 router = APIRouter()
 NO_ID = {"_id": 0}
@@ -68,10 +68,22 @@ def update_machine(machine_id: str, body: MachineUpdate):
             order = dbm.orders().find_one({"orderId": changes["currentOrderId"]})
             if not order:
                 raise HTTPException(404, "Order not found")
+            if order.get("status") == "CANCELLED":
+                raise HTTPException(409, "Order is already cancelled.")
+            if order.get("stageStatus") == "PAUSED":
+                raise HTTPException(409, "Order is paused. Resume it, or change its machine, instead.")
             changes.update(producedMeters=0, targetMeters=max(0, order["quantityMeters"]-order["producedMeters"]))
             dbm.orders().update_one({"orderId": order["orderId"]}, {"$set": {"machineId": machine_id}})
+        current = changes.get("currentOrderId") or before.get("currentOrderId")
+        held = dbm.orders().find_one({"orderId": current}, NO_ID) if current else None
+        if changes.get("status") == "RUNNING" and held and (held.get("status") == "CANCELLED" or held.get("stageStatus") == "PAUSED"):
+            raise HTTPException(409, "Order is cancelled." if held.get("status") == "CANCELLED" else "Order is paused. Resume it to start production.")
         dbm.machines().update_one({"machineId": machine_id}, {"$set": changes})
         after = dbm.machines().find_one({"machineId": machine_id}, NO_ID)
+        if changes.get("currentOrderId") and changes["currentOrderId"] != before.get("currentOrderId"):
+            machine_sessions.close_for_order_machine(machine_id, "REASSIGNED")
+            if simulator.incomplete(held):
+                machine_sessions.open_session(held, machine_id, None)
         # machine cost of the affected orders changes with the assignment or rate
         for oid in {before.get("currentOrderId"), after.get("currentOrderId")} - {None}:
             if dbm.orders().find_one({"orderId": oid}):

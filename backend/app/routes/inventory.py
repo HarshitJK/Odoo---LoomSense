@@ -4,6 +4,8 @@ from fastapi import APIRouter, HTTPException
 
 from app import database as dbm
 from app.models.inventory import InventoryBatch, InventoryUpdate
+from app.services.materials import record_material_return
+from app.utils.ids import normalize_id
 
 router = APIRouter()
 NO_ID = {"_id": 0}
@@ -34,6 +36,9 @@ def create_batch(body: InventoryBatch):
 @router.patch("/{batch_id}")
 def update_batch(batch_id: str, body: InventoryUpdate):
     changes = body.model_dump(exclude_unset=True)
+    returned_from = changes.pop("returnedFromOrderId", None)
+    if returned_from:
+        record_material_return(batch_id, normalize_id(returned_from), changes.get("quantityKg"))
     if changes:
         result = dbm.inventory().update_one({"batchId": batch_id}, {"$set": changes})
         if result.matched_count == 0:

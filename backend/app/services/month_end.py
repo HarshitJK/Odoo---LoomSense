@@ -53,6 +53,7 @@ def report(month):
     active = {r.get("orderId") for r in events + attendance + payments + quality + expenses} - {None}
     profits = [p for p in profitability.all_order_profits(data) if p["orderId"] in active]
     orders = {o["orderId"]: o for o in data["orders"]}
+    cancelled = {o["orderId"] for o in data["orders"] if o.get("status") == "CANCELLED"}
     production_value = sum(e.get("producedMetersDelta", 0) * orders.get(e.get("orderId"), {}).get("revenue", 0)
                            / (orders.get(e.get("orderId"), {}).get("quantityMeters") or 1) for e in events)
     result = {"month": month, "buyerPaymentsReceived": round(sum(p["amount"] for p in payments), 2),
@@ -62,9 +63,10 @@ def report(month):
         "reworkCost": round(sum(costing.quality_loss(q) for q in quality), 2),
         "otherExpenses": round(sum(e["amount"] for e in expenses), 2),
         "productionValue": round(production_value, 2), "machineProduction": machines, "orderProfitability": profits,
+        "cancelledOrders": [p for p in profits if p["cancelled"]],
         "wageSummary": {"regularWages": wages["regular"], "overtime": wages["overtime"], "totalWorkforceCost": wages["total"]},
         "productionOverview": {"producedMeters": round(sum(e.get("producedMetersDelta", 0) for e in events), 2),
-            "totalOrders": len(active), "completedOrders": len({e["orderId"] for e in events if e.get("completed")})},
+            "totalOrders": len(active), "completedOrders": len({e["orderId"] for e in events if e.get("completed")} - cancelled)},
         "accountingBasis": "Buyer cash received less bills and operating costs incurred. Wages, machine and rework costs are accrued estimates, not bank payments. Order profits are lifetime totals for orders active this month."}
     result["totalCashIn"] = result["buyerPaymentsReceived"]
     result["totalExpenses"] = round(sum(result[k] for k in ("rawMaterialBills", "workerWages", "machineOperatingCost", "reworkCost", "otherExpenses")), 2)

@@ -17,6 +17,7 @@ def finance_dashboard(month: Optional[str] = None):
     profits = profitability.all_order_profits(data)
     summary = profitability.monthly_summary(month)
     finished = [p for p in profits if not p["provisional"] and p["revenue"]]
+    cancelled = [p for p in profits if p["cancelled"]]
 
     month_payments = [t["amount"] for t in data["transactions"] if t.get("type") == "BUYER_PAYMENT" and (t.get("date") or "").startswith(month)]
     breakdown = summary["costBreakdown"]
@@ -36,11 +37,13 @@ def finance_dashboard(month: Optional[str] = None):
             "rawMaterialExpense": breakdown["rawMaterial"],
             "machineOperatingCost": breakdown["machine"],
             "reworkCost": breakdown["rework"],
+            "cancelledOrderLoss": round(sum(p["cancellation"]["writeOffLoss"] for p in cancelled), 2),
         },
         "costBreakdown": breakdown,
         "mostProfitableOrder": max(finished, key=lambda p: p["margin"], default=None),
         "leastProfitableOrder": min(finished, key=lambda p: p["margin"], default=None),
-        "orders": profits,
+        "orders": [p for p in profits if not p["cancelled"]],
+        "cancelledOrders": cancelled,
     }
 
 

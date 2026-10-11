@@ -44,12 +44,13 @@ def quality_loss(record: dict) -> float:
 # ---------- loading ----------
 
 def load_data(order_id: str = None) -> dict:
-    """Everything the costing code reads, in 7 queries. With order_id, order-level
+    """Everything the costing code reads, in a few queries. With order_id, order-level
     collections (orders, attendance, quality, payments) are limited to that order."""
     one = {"orderId": order_id} if order_id else {}
     return {
         "productionEvents": list(dbm.db.machineProductionEvents.find(one, NO_ID)),
         "consumption": list(dbm.db.materialConsumption.find(one, NO_ID)),
+        "materialReturns": list(dbm.db.materialReturns.find(one, NO_ID)),
         "orders": list(dbm.orders().find(one, NO_ID).sort("orderId", 1)),
         "attendance": list(dbm.attendance().find(one, NO_ID)),
         "rates": hourly_rates(),

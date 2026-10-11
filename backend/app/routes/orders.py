@@ -2,11 +2,13 @@ from datetime import date, datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Depends
-from app.services.auth import current_user, owner
+from app.services.auth import current_user, management, owner
 
 from app import database as dbm
-from app.models.order import Order, OrderCreate, OrderUpdate, ReadinessRequest
-from app.services import costing, order_readiness, profitability, quality_gate, tracking
+from app.models.order import (
+    CancelRequest, ChangeMachineRequest, Order, OrderCreate, OrderUpdate, PauseRequest, ReadinessRequest, ResumeRequest,
+)
+from app.services import audit, costing, machine_sessions, order_readiness, production_control, profitability, quality_gate, tracking
 from app.utils.ids import next_order_id
 from app.utils.tokens import new_tracking_token
 
@@ -64,6 +66,10 @@ def update_order(order_id: str, body: OrderUpdate, user=Depends(current_user)):
     changes = body.model_dump(exclude_unset=True)
     changes["updatedAt"] = datetime.now(timezone.utc).isoformat()
     existing = dbm.orders().find_one({"orderId": order_id}, NO_ID)
+    if existing and existing.get("status") == "CANCELLED":
+        raise HTTPException(409, "Order is already cancelled.")
+    if changes.get("status") == "CANCELLED":
+        raise HTTPException(409, "Use the cancel action to cancel an order.")
     if existing and quality_gate.is_gated(existing) and "status" in changes:
         raise HTTPException(409, "This order moves through quality-gated stages. Use the stage complete and advance actions.")
     if changes:
@@ -84,6 +90,50 @@ def complete_stage(order_id: str, user=Depends(current_user)):
 def advance_stage(order_id: str, user=Depends(current_user)):
     """Move to the next stage. 409 unless the current stage's quality inspection passed and there is no hold."""
     return order_view(quality_gate.advance_stage(order_id), user)
+
+
+@router.post("/{order_id}/pause")
+def pause_order(order_id: str, body: PauseRequest, user=Depends(management)):
+    """Stop production: the order is PAUSED, its machine session closes and the machine goes IDLE."""
+    return order_view(production_control.pause(order_id, body.reason, body.notes, user), user)
+
+
+@router.post("/{order_id}/resume")
+def resume_order(order_id: str, body: ResumeRequest = ResumeRequest(), user=Depends(management)):
+    """Continue a paused order. A new machine session starts (never an old one reopened)."""
+    return order_view(production_control.resume(order_id, body.machineId, user), user)
+
+
+@router.post("/{order_id}/change-machine")
+def change_machine(order_id: str, body: ChangeMachineRequest, user=Depends(management)):
+    """Move a PAUSED order to another machine. Resume afterwards to start the new session."""
+    return order_view(production_control.change_machine(order_id, body.newMachineId, body.reason, body.notes, user), user)
+
+
+@router.post("/{order_id}/cancel")
+def cancel_order(order_id: str, body: CancelRequest, user=Depends(owner)):
+    """Owner only. Soft cancel: history and costs stay, production stops for good."""
+    return order_view(production_control.cancel(order_id, body.reason, body.notes, user), user)
+
+
+@router.get("/{order_id}/machine-history")
+def machine_history(order_id: str):
+    order_id = normalize_id(order_id)
+    costing.get_order(order_id)
+    return machine_sessions.history(order_id)
+
+
+@router.get("/{order_id}/available-machines")
+def available_machines(order_id: str):
+    """Machines this order could be moved to (usable and not on another incomplete order)."""
+    return production_control.available_machines(order_id)
+
+
+@router.get("/{order_id}/audit")
+def order_audit(order_id: str):
+    order_id = normalize_id(order_id)
+    costing.get_order(order_id)
+    return audit.for_order(order_id)
 
 
 @router.post("/{order_id}/tracking/regenerate")

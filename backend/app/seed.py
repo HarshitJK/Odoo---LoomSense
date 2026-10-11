@@ -13,7 +13,7 @@ from app.models.order import Order
 from app.models.quality import QualityCheck
 from app.models.transaction import Transaction
 from app.models.worker import Worker
-from app.services import profitability, quality_gate, tracking
+from app.services import audit, machine_sessions, profitability, quality_gate, tracking
 
 SEED_VERSION = "2026-10-11.2"
 
@@ -186,6 +186,9 @@ def main():
 
     seed_financial_history()
     quality_orders = seed_quality_demo()
+    machine_sessions.backfill()
+    machine_sessions.ensure_indexes()
+    audit.ensure_indexes()
 
     # Compute costs, profit and margin from the operational data and store them on each order
     for o in ORDERS:
@@ -201,7 +204,8 @@ def main():
 
 def seed_financial_history():
     """Explicit demo activity; never backfill real history from mutable live state."""
-    for name in ("materialPurchases", "machineProductionEvents", "operatingExpenses", "materialConsumption", "materialReservations"):
+    for name in ("materialPurchases", "machineProductionEvents", "operatingExpenses", "materialConsumption", "materialReservations",
+                 "machineAssignments", "auditLog", "materialReturns"):
         dbm.db[name].delete_many({})
     machines = {m["machineId"]: m for m in build_machines()}
     batches = {b["batchId"]: b for b in dbm.inventory().find({})}

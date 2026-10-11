@@ -27,6 +27,10 @@ def next_inspection_id() -> str:
     return _next(dbm.quality_checks(), "inspectionId", "INS", 1, width=5)
 
 
+def next_session_id() -> str:
+    return _next(dbm.db.machineAssignments, "sessionId", "SES", 1, width=5)
+
+
 def next_transaction_id() -> str:
     return _next(dbm.transactions(), "transactionId", "TXN", 1, width=3)
 

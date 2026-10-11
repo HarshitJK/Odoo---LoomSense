@@ -2,7 +2,7 @@
 import os
 from datetime import datetime, timezone
 from app import database as dbm
-from app.services import quality_gate, tracking
+from app.services import audit, machine_sessions, quality_gate, tracking
 from app.services.auth import hash_password
 
 
@@ -10,6 +10,9 @@ def main():
     stamp = datetime.now(timezone.utc).isoformat()
     tracking.ensure_tracking_tokens()
     quality_gate.ensure_indexes()
+    machine_sessions.ensure_indexes()
+    audit.ensure_indexes()
+    machine_sessions.backfill()
     for role, name in [("OWNER", "owner"), ("PRODUCTION_MANAGER", "manager"), ("WORKER_QC", "qc")]:
         password = os.getenv("SEED_" + role + "_PASSWORD")
         email = name + "@loomsense.demo"

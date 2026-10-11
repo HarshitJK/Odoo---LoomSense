@@ -19,3 +19,4 @@ class InventoryUpdate(BaseModel):
     quantityKg: Optional[float] = Field(default=None, ge=0)
     costPerKg: Optional[float] = Field(default=None, ge=0)
     supplier: Optional[str] = None
+    returnedFromOrderId: Optional[str] = None  # the stock increase is yarn returned from this cancelled order

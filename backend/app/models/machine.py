@@ -8,7 +8,7 @@ class Machine(BaseModel):
     machineId: str
     name: Optional[str] = None
     type: Optional[str] = None  # e.g. WEAVING
-    status: str = "IDLE"  # RUNNING | IDLE | DOWN
+    status: str = "IDLE"  # RUNNING | IDLE | DOWN | MAINTENANCE
     currentOrderId: Optional[str] = None
     productionRate: float = 0
     producedMeters: float = 0
@@ -20,7 +20,7 @@ class Machine(BaseModel):
 
 
 class MachineUpdate(BaseModel):
-    status: Optional[Literal["RUNNING", "IDLE", "DOWN"]] = None
+    status: Optional[Literal["RUNNING", "IDLE", "DOWN", "MAINTENANCE"]] = None
     currentOrderId: Optional[str] = None
     productionRate: Optional[float] = Field(default=None, ge=0)
 

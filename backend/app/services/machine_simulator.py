@@ -15,7 +15,7 @@ from datetime import datetime, timedelta, timezone
 
 from app import database as dbm
 from app.config import SIMULATOR_AUTOSTART
-from app.services import profitability, production_history, materials, quality_gate
+from app.services import machine_sessions, profitability, production_history, materials, quality_gate
 
 log = logging.getLogger("loomsense.simulator")
 NO_ID = {"_id": 0}
@@ -132,7 +132,7 @@ def tick() -> tuple:
 
 
 def incomplete(order) -> bool:
-    return bool(order and order.get("status") not in ("DISPATCHED", "COMPLETED")
+    return bool(order and order.get("status") not in ("DISPATCHED", "COMPLETED", "CANCELLED")
                 and order.get("producedMeters", 0) < order.get("quantityMeters", 0))
 
 
@@ -143,6 +143,8 @@ def _reset_daily_runtime():
 
 
 def _idle(machine, reason):
+    if machine.get("currentOrderId") and not incomplete(dbm.orders().find_one({"orderId": machine["currentOrderId"]}, NO_ID)):
+        machine_sessions.close_for_order(machine["currentOrderId"], None, "ORDER_FINISHED")
     dbm.machines().update_one({"machineId": machine["machineId"]}, {"$set": {"status": "IDLE"}})
     return event_message("machine_idle", reason, machine["machineId"], machine.get("currentOrderId"))
 
@@ -150,6 +152,7 @@ def _idle(machine, reason):
 def _complete_order(order_id: str, machine_id: str) -> dict:
     """Order reached its quantity: move it to QUALITY_CHECK, idle its machines, return the event."""
     dbm.orders().update_one({"orderId": order_id}, {"$set": {"status": "QUALITY_CHECK", "completedAt": now_iso()}})
+    machine_sessions.close_for_order(order_id, None, "STAGE_COMPLETED")
     # Machines keep currentOrderId so their cost stays attributed to the finished order
     dbm.machines().update_many({"currentOrderId": order_id, "status": "RUNNING"}, {"$set": {"status": "IDLE"}})
     return event_message(
@@ -161,6 +164,7 @@ def _complete_order(order_id: str, machine_id: str) -> dict:
 def _stage_finished(order_id: str, machine_id: str) -> dict:
     """A gated order finished weaving: it now waits for its stage inspection. Its machines go idle."""
     dbm.machines().update_many({"currentOrderId": order_id, "status": "RUNNING"}, {"$set": {"status": "IDLE"}})
+    machine_sessions.close_for_order(order_id, None, "STAGE_COMPLETED")
     return event_message("stage_finished", f"Order {order_id} finished weaving on {machine_id}. Waiting for the quality inspection.",
                          machine_id, order_id)
 
@@ -194,6 +198,10 @@ def apply_reading(machine_id: str, reading: dict) -> tuple:
         order = dbm.orders().find_one({"orderId": m.get("currentOrderId")}, NO_ID) if m.get("currentOrderId") else None
         finished = False
         if not incomplete(order):
+            if changes.get("status", m["status"]) == "RUNNING":
+                changes["status"] = "IDLE"
+            delta = 0
+        if order and order.get("stageStatus") == "PAUSED":  # paused: no metres, run time or machine cost
             if changes.get("status", m["status"]) == "RUNNING":
                 changes["status"] = "IDLE"
             delta = 0
@@ -324,8 +332,11 @@ def _start_machine(machine_id: str) -> None:
         raise MachineNotFound(f"Machine {machine_id} not found")
     if not machine.get("currentOrderId"):
         raise ValueError(f"Machine {machine_id} has no order assigned")
-    if not incomplete(dbm.orders().find_one({"orderId": machine["currentOrderId"]})):
+    order = dbm.orders().find_one({"orderId": machine["currentOrderId"]})
+    if not incomplete(order):
         raise ValueError(f"Machine {machine_id} has no incomplete order to produce")
+    if order.get("stageStatus") == "PAUSED":
+        raise ValueError(f"Order {order['orderId']} is paused; resume it before starting machine {machine_id}")
     _set_status(machine_id, "RUNNING")
 
 

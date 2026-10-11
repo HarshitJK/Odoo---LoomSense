@@ -18,7 +18,7 @@ from app.config import (
     DEFAULT_SAMPLE_METERS, FIRST_OFF_STAGE, QC_MANDATORY_STAGES, QC_STAGE_BUYER_INDEX, QC_STAGE_STATUS,
     QC_STAGES, YARN_KG_PER_METRE,
 )
-from app.services import costing, profitability
+from app.services import costing, machine_sessions, profitability
 from app.utils.ids import next_inspection_id, next_roll_id, normalize_id
 
 NO_ID = {"_id": 0}
@@ -89,6 +89,14 @@ def ensure_gated(order: dict) -> dict:
     return _set(order["orderId"], changes)
 
 
+def ensure_active(order: dict, action: str) -> None:
+    """Cancelled and paused orders take no stage, inspection or production actions."""
+    if order.get("status") == "CANCELLED":
+        raise HTTPException(409, "Order is already cancelled.")
+    if order.get("stageStatus") == "PAUSED":
+        raise HTTPException(409, f"Cannot {action} while production is paused.")
+
+
 def stage_index(stage: str) -> int:
     return QC_STAGES.index(stage)
 
@@ -147,7 +155,9 @@ def _scrap_estimate(order: dict, rec: dict) -> float:
 
 def complete_stage(order_id: str) -> dict:
     """The current stage is finished. Stages that need QC become QC_PENDING; the others are complete."""
-    order = ensure_gated(_order_or_404(order_id))
+    order = _order_or_404(order_id)
+    ensure_active(order, "complete the stage")
+    order = ensure_gated(order)
     stage, status = order["currentStage"], order["stageStatus"]
     if status == "QUALITY_HOLD":
         raise HTTPException(409, f"Order is on quality hold at {stage}. Record a corrective action and pass a reinspection first.")
@@ -162,6 +172,8 @@ def complete_stage(order_id: str) -> dict:
         if order.get("producedMeters", 0) < order.get("quantityMeters", 0):
             raise HTTPException(409, f"{stage} is not finished: {round(order.get('producedMeters', 0))} of "
                                      f"{round(order.get('quantityMeters', 0))} m woven.")
+    if stage != QC_STAGES[0]:  # a machine is only on the order from weaving on
+        machine_sessions.close_for_order(order_id, None, "STAGE_COMPLETED")
     if stage in QC_MANDATORY_STAGES:
         return _set(order_id, {"stageStatus": "QC_PENDING", "productionBlocked": False, "productionBlockReason": None,
                                "pendingInspectionType": "FINAL" if stage == "FINAL_QC" else "STAGE"})
@@ -173,7 +185,9 @@ def complete_stage(order_id: str) -> dict:
 
 def advance_stage(order_id: str) -> dict:
     """Move to the next stage. Refused (409) unless the current stage's mandatory inspection PASSED."""
-    order = ensure_gated(_order_or_404(order_id))
+    order = _order_or_404(order_id)
+    ensure_active(order, "advance")
+    order = ensure_gated(order)
     stage, status = order["currentStage"], order["stageStatus"]
     target = next_stage(stage)
     if target is None:
@@ -189,6 +203,10 @@ def advance_stage(order_id: str) -> dict:
         latest = latest_stage_inspection(order["orderId"], stage)
         if not latest or latest.get("status") != "PASSED":
             raise blocked
+        # A pass only covers the production that existed when it was recorded
+        covered = latest.get("producedMetersAtInspection")
+        if covered is not None and order.get("producedMeters", 0) > covered + 1e-6:
+            raise HTTPException(409, "QC must pass before this stage can be completed")
     changes = {"currentStage": target, "stageStatus": "IN_PROGRESS", "pendingInspectionType": None,
                "productionBlocked": False, "productionBlockReason": None, "status": QC_STAGE_STATUS[target]}
     if target == "FINAL_QC":  # nothing is produced at final QC: it goes straight to its inspection
@@ -200,6 +218,8 @@ def advance_stage(order_id: str) -> dict:
 
 def production_allowed(order: dict) -> bool:
     """False while a gated order is on hold, waiting for first-off or QC, or not in its weaving stage."""
+    if order and order.get("status") == "CANCELLED":
+        return False
     if not is_gated(order):
         return True
     return (order["currentStage"] == FIRST_OFF_STAGE and order["stageStatus"] == "IN_PROGRESS"
@@ -235,6 +255,7 @@ def after_production(order_id: str):
         return "first_off"
     if produced >= order.get("quantityMeters", 0):
         _set(order_id, {"stageStatus": "QC_PENDING", "pendingInspectionType": "STAGE"})
+        machine_sessions.close_for_order(order_id, None, "STAGE_COMPLETED")
         return "stage_finished"
     return None
 
@@ -250,7 +271,9 @@ def create_inspection(data: dict, user: dict) -> tuple:
     """Store a stage-gated inspection and apply its effect on the order. Returns (record, marginBefore, marginAfter)."""
     if not data.get("orderId"):
         raise HTTPException(422, "orderId is required for a stage inspection.")
-    order = ensure_gated(_order_or_404(data["orderId"]))
+    order = _order_or_404(data["orderId"])
+    ensure_active(order, "record an inspection")
+    order = ensure_gated(order)
     hold = order.get("qualityHold")
     failed_rec = None
 
@@ -333,6 +356,7 @@ def create_inspection(data: dict, user: dict) -> tuple:
         "additionalLabourCost": data.get("additionalLabourCost", 0), "additionalMachineCost": data.get("additionalMachineCost", 0),
         "scrapMaterialCost": data.get("scrapMaterialCost", 0), "reinspectionOf": data.get("reinspectionOf"),
         "inspectionDate": day, "createdAt": stamp, "updatedAt": stamp,
+        "producedMetersAtInspection": order.get("producedMeters", 0),
     }
     if status in FAILED and rec["affectedMeters"] > 0 and not any(
             rec[k] for k in ("reworkCost", "additionalLabourCost", "additionalMachineCost", "scrapMaterialCost")):
@@ -420,6 +444,8 @@ def set_corrective_action(inspection_id: str, body: dict, user: dict) -> dict:
         raise HTTPException(409, f"A corrective action is already recorded for {inspection_id}.")
     action = body["correctiveAction"]
     _validate_corrective(action, rec.get("defectSeverity"))
+    if (dbm.orders().find_one({"orderId": rec["orderId"]}, NO_ID) or {}).get("status") == "CANCELLED":
+        raise HTTPException(409, "Order is already cancelled.")
     changes = {"correctiveAction": action, "updatedAt": now_iso()}
     for key in ("notes", "reworkCost", "additionalLabourCost", "additionalMachineCost", "scrapMaterialCost"):
         if body.get(key) is not None:
@@ -438,7 +464,7 @@ def set_corrective_action(inspection_id: str, body: dict, user: dict) -> dict:
 
 def pending_inspections() -> list:
     rows = []
-    for o in dbm.orders().find({"stageStatus": "QC_PENDING"}, NO_ID).sort("orderId", 1):
+    for o in dbm.orders().find({"stageStatus": "QC_PENDING", "status": {"$ne": "CANCELLED"}}, NO_ID).sort("orderId", 1):
         kind = o.get("pendingInspectionType") or "STAGE"
         rows.append({"orderId": o["orderId"], "buyerName": o.get("buyerName"), "stage": o["currentStage"],
                      "inspectionType": kind, "machineId": o.get("machineId"),
@@ -449,7 +475,7 @@ def pending_inspections() -> list:
 
 def quality_holds() -> list:
     rows = []
-    for o in dbm.orders().find({"qualityHold": {"$ne": None}}, NO_ID).sort("orderId", 1):
+    for o in dbm.orders().find({"qualityHold": {"$ne": None}, "status": {"$ne": "CANCELLED"}}, NO_ID).sort("orderId", 1):
         hold = o["qualityHold"]
         failed = dbm.quality_checks().find_one({"inspectionId": hold.get("failedInspectionId")}, NO_ID) or {}
         rows.append({"orderId": o["orderId"], "buyerName": o.get("buyerName"), "machineId": o.get("machineId"),
