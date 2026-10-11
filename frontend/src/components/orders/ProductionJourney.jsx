@@ -42,7 +42,7 @@ function InspectionRow({ item }) {
 
 /**
  * The stages of an order with the inspections done in each (GET /api/quality/order/{id}/timeline).
- * For stage-gated orders it also has the two stage buttons. They always call the API, so a refused move
+ * For stage-gated orders it also has the stage button. It always calls the API, so a refused move
  * (409) shows the server's reason here.
  * Props: order - the order object; onChanged(order) - called with the order after a stage move.
  */
@@ -79,9 +79,8 @@ export default function ProductionJourney({ order, onChanged }) {
       {order.qualityHold && <Notice tone="warning">{order.qualityHold.holdReason}. Production is stopped until a reinspection passes.</Notice>}
       {!order.qualityHold && order.productionBlockReason && <Notice tone="info">{order.productionBlockReason}.</Notice>}
 
-      {order.gated && (
+      {order.gated && order.status !== "CANCELLED" && order.stageStatus !== "PAUSED" && (
         <div className="flex flex-wrap gap-3">
-          <Button disabled={busy} onClick={() => move("complete")}>Mark stage complete</Button>
           <Button disabled={busy} onClick={() => move("advance")}>Move to next stage</Button>
         </div>
       )}

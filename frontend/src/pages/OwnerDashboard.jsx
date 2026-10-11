@@ -8,6 +8,7 @@ import RevenueCostChart from "../components/charts/RevenueCostChart.jsx";
 import CostBreakdown from "../components/charts/CostBreakdown.jsx";
 import OrderProfitTable from "../components/orders/OrderProfitTable.jsx";
 import ProfitLeakagePanel from "../components/orders/ProfitLeakagePanel.jsx";
+import CancelledOrdersTable from "../components/orders/CancelledOrdersTable.jsx";
 
 // Only used when VITE_USE_MOCKS=true
 import { monthlySummary as mockSummary, monthlyTrend as mockTrend, profitLeakage as mockLeakage } from "../mocks/finance.js";
@@ -78,6 +79,8 @@ export default function OwnerDashboard() {
       )}
 
       {(d?.orders || orders.data) && <OrderProfitTable orders={d?.orders || orders.data} />}
+
+      {d?.cancelledOrders?.length > 0 && <CancelledOrdersTable orders={d.cancelledOrders} />}
 
       {leakage.data && <ProfitLeakagePanel leakage={leakage.data} />}
 

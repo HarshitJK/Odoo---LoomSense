@@ -1,4 +1,5 @@
 import Card from "../common/Card.jsx";
+import Notice from "../common/Notice.jsx";
 import ProgressBar from "../common/ProgressBar.jsx";
 import StatusBadge from "../common/StatusBadge.jsx";
 import TrackingTimeline from "./TrackingTimeline.jsx";
@@ -17,8 +18,12 @@ function Row({ label, children }) {
 export default function OrderSummaryCard({ order }) {
   if (!order) return null;
 
+  const cancelled = order.orderStatus === "CANCELLED";
   return (
     <>
+      {order.statusMessage && (
+        <Notice tone={cancelled ? "info" : "warning"}>{order.statusMessage}</Notice>
+      )}
       <Card>
         <dl>
           <Row label="Buyer">{order.buyerName}</Row>
@@ -28,13 +33,16 @@ export default function OrderSummaryCard({ order }) {
         </dl>
       </Card>
 
+      {!cancelled && (
       <Card title="Progress">
         <div className="mt-3 space-y-5">
           <ProgressBar value={order.progress} label="Order complete" />
           <TrackingTimeline stages={order.stages} />
         </div>
       </Card>
+      )}
 
+      {!cancelled && (
       <Card>
         <dl>
           <Row label="Expected completion">{formatDate(order.expectedCompletion, "Not set yet")}</Row>
@@ -44,6 +52,7 @@ export default function OrderSummaryCard({ order }) {
           <Row label="Dispatch"><StatusBadge status={order.dispatchStatus} /></Row>
         </dl>
       </Card>
+      )}
     </>
   );
 }

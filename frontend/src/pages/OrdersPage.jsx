@@ -12,6 +12,8 @@ import { Table, THead, Th, TBody, Tr, Td, useRowLimit, ShowAll } from "../compon
 import ReadinessResult from "../components/orders/ReadinessResult.jsx";
 import BuyerLink from "../components/orders/BuyerLink.jsx";
 import ProductionJourney from "../components/orders/ProductionJourney.jsx";
+import ProductionControls from "../components/orders/ProductionControls.jsx";
+import MachineHistory from "../components/orders/MachineHistory.jsx";
 import useApi from "../hooks/useApi.js";
 import client from "../api/client.js";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -108,6 +110,7 @@ export default function OrdersPage() {
   const updateSelected = (order) => {
     setPanel((p) => ({ ...p, order }));
     orders.reload();
+    machines.reload();
   };
 
   const field = (key) => ({
@@ -184,7 +187,9 @@ export default function OrdersPage() {
                   <Td>{o.buyerName}</Td>
                   <Td>{[o.fabricType, o.colour].filter(Boolean).join(", ")}</Td>
                   <Td align="right">{formatMetres(o.quantityMeters)}</Td>
-                  <Td><StatusBadge status={o.status} /></Td>
+                  <Td>
+                    <StatusBadge status={o.status !== "CANCELLED" && o.stageStatus === "PAUSED" ? "PAUSED" : o.status} />
+                  </Td>
                   <Td>{formatDate(o.deadline, "No deadline")}</Td>
                   <Td>
                     <div className="flex gap-2">
@@ -222,8 +227,13 @@ export default function OrdersPage() {
               <ReadinessResult result={readiness} />
             </section>
 
+            <ProductionControls key={`controls-${selected.orderId}`} order={selected} onChanged={updateSelected} />
+
             <ProductionJourney key={selected.orderId} order={selected} onChanged={updateSelected} />
 
+            <MachineHistory key={`history-${selected.orderId}`} order={selected} />
+
+            <fieldset disabled={selected.status === "CANCELLED"} className="contents">
             {!selected.gated && (
             <section className="space-y-3">
               <h3 className="text-sm font-semibold text-gray-900">Order stage</h3>
@@ -297,9 +307,11 @@ export default function OrdersPage() {
                     ))}
                   </Select>
                 </FormField>
-                <Button type="submit" disabled={busy}>Assign and start</Button>
+                <Button type="submit" disabled={busy || selected.stageStatus === "PAUSED"}>Assign and start</Button>
               </div>
+              {selected.stageStatus === "PAUSED" && <p className="text-sm text-gray-600">The order is paused. Use Resume production or Change machine above.</p>}
             </form>
+            </fieldset>
 
             {cost && (
               <section className="space-y-2">

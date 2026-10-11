@@ -9,6 +9,7 @@ import MockBadge from "../components/common/MockBadge.jsx";
 import Notice from "../components/common/Notice.jsx";
 import MachineCard from "../components/machines/MachineCard.jsx";
 import MachineDetailPanel from "../components/machines/MachineDetailPanel.jsx";
+import StoppedOrders from "../components/machines/StoppedOrders.jsx";
 
 // Only used when VITE_USE_MOCKS=true
 import { machines as mockMachines } from "../mocks/machines.js";
@@ -104,6 +105,8 @@ export default function ProductionPage() {
           </div>
         </>
       )}
+
+      {!USE_MOCKS && !error && <StoppedOrders />}
 
       {selectedMachine && <MachineDetailPanel machine={selectedMachine} onClose={() => setSelectedId(null)} />}
     </>

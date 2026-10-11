@@ -7,6 +7,7 @@ const STATUS = {
   RUNNING: { label: "Running", tone: "good" },
   IDLE: { label: "Idle", tone: "neutral" },
   DOWN: { label: "Down", tone: "bad" },
+  MAINTENANCE: { label: "Maintenance", tone: "warn" },
 
   // Quality results
   PASSED: { label: "Passed", tone: "good" },
@@ -27,6 +28,10 @@ const STATUS = {
   COMPLETED: { label: "Completed", tone: "good" },
   DELIVERED: { label: "Delivered", tone: "good" },
   NOT_DISPATCHED: { label: "Not dispatched", tone: "neutral" },
+  CANCELLED: { label: "Cancelled", tone: "neutral" },
+  PAUSED: { label: "Paused", tone: "warn" },
+  ACTIVE: { label: "Active", tone: "good" },
+  ENDED: { label: "Ended", tone: "neutral" },
 
   // Rework progress
   NOT_REQUIRED: { label: "Not needed", tone: "neutral" },
@@ -142,6 +147,34 @@ export function stageQcBadge(stageStatus, pendingInspectionType) {
   if (stageStatus === "QC_PENDING") {
     return { label: pendingInspectionType === "FIRST_OFF" ? "Waiting for first-off check" : "Waiting for QC", tone: "warn" };
   }
+  if (stageStatus === "PAUSED") return { label: "Paused", tone: "warn" };
   if (stageStatus === "COMPLETE") return { label: "QC passed", tone: "good" };
   return null;
 }
+
+// ---- Production controls: pause, change machine, cancel ----
+
+export const PAUSE_REASONS = [
+  { value: "MACHINE_BREAKDOWN", label: "Machine breakdown" },
+  { value: "MAINTENANCE", label: "Maintenance" },
+  { value: "MATERIAL_SHORTAGE", label: "Material shortage" },
+  { value: "QUALITY_ISSUE", label: "Quality issue" },
+  { value: "OPERATOR_UNAVAILABLE", label: "Operator unavailable" },
+  { value: "MANUAL", label: "Manual stop" },
+  { value: "OTHER", label: "Other" },
+];
+
+export const CANCEL_REASONS = [
+  { value: "BUYER_CANCELLED", label: "Buyer cancelled" },
+  { value: "MATERIAL_ISSUE", label: "Material issue" },
+  { value: "PRODUCTION_DEFECT", label: "Production defect" },
+  { value: "MACHINE_LIMITATIONS", label: "Machine limitations" },
+  { value: "COMMERCIAL_DECISION", label: "Commercial decision" },
+  { value: "DUPLICATE_ORDER", label: "Duplicate order" },
+  { value: "OTHER", label: "Other" },
+];
+
+export const reasonLabel = (code) =>
+  [...PAUSE_REASONS, ...CANCEL_REASONS].find((r) => r.value === code)?.label ??
+  { STAGE_COMPLETED: "Stage completed", REASSIGNED: "Machine reassigned", ORDER_FINISHED: "Order finished" }[code] ??
+  (code ? humanise(code) : "");
