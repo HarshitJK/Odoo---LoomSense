@@ -73,6 +73,14 @@ Demo data has six orders, five buyers, six machines, ten workers, five yarn batc
 partial/unpaid orders and high/low-margin examples. ORD091 starts in September and has
 October production, wages and rework; tests additionally record its October buyer payment.
 
+## Production controls
+
+On an order's Details panel the owner and the production manager can **pause** production (with a reason), **resume** it,
+**change machine** (pauses first if the order is running) and see the **machine history**; only the owner can **cancel** an
+order. Each machine that works on an order stage gets a session record, every action is written to an append-only audit trail,
+and cancelling keeps all history and costs while showing the loss separately on the dashboard. See
+[docs/api.md](docs/api.md) (Production controls) and the demo in [docs/demo-runbook.md](docs/demo-runbook.md).
+
 ## Accounting and access
 
 Monthly books use activity dates: buyer transaction date, attendance date, purchase date,
@@ -280,6 +288,8 @@ App: http://localhost:5173
 - Never commit `.env`, credentials or API keys.
 
 ## Known limitations
+
+- **Production controls.** The single-node safety comes from conditional updates, not transactions: a crash part-way through a pause, resume, change or cancel leaves the order in the safe state (paused or cancelled) with machines or sessions to tidy; resuming a paused order closes any leftover session first. A paused order keeps its machine reserved until it is changed or cancelled. Recoverable material after a cancellation is counted only when it is returned through the inventory adjustment, and only up to what the order consumed.
 
 - **Single process only.** The simulator and WebSocket connections are in-process. Scaling out would duplicate the simulator. On a free Render plan the service sleeps when idle, which also pauses the simulator.
 - **Workers do not have their own logins.** Worker attendance is entered by the owner or production manager; there is no worker self-service portal.

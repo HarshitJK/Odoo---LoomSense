@@ -225,6 +225,23 @@ Click **Profit leakage** or go to `/api/finance/profit-leakage?order_id=ORD<new>
 
 ---
 
+## Step 11b — Pause, change machine and cancel (optional, about 3 minutes)
+
+Use the order from Step 5 while its weaving is running (any order that is `IN_PROGRESS` with a machine works).
+
+1. **Orders > Details** on the running order. Under Production controls click **Pause production**, choose *Machine breakdown*,
+   add a note, confirm. The badge shows Paused, the machine goes Idle on the Machines page and stops producing.
+2. Click **Change machine**. The current machine is shown; pick another idle machine from the list, choose a reason, confirm.
+3. Click **Resume production**. Machine history now has two rows: the first machine (Ended, with its metres and the reason) and the
+   new machine (Current).
+4. Open the buyer link: it reads *Production temporarily paused* while paused. It never shows machines, workers or reasons.
+5. Sign in as the owner (managers do not see **Cancel order**). Click **Cancel order**, choose a reason, read the warning, confirm.
+   The panel becomes a neutral banner with the reason, who, when and the stage; every action is disabled.
+6. Open the dashboard: the order is under **Cancelled orders** with its value, the cost already incurred and the loss, not in the
+   completed orders. `GET /api/orders/{id}/audit` lists ORDER_PAUSED, MACHINE_CHANGED, ORDER_RESUMED and ORDER_CANCELLED.
+
+---
+
 ## Step 12 — Reset for next run
 
 **API reset** (fastest):

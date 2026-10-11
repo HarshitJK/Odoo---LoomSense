@@ -79,6 +79,56 @@ Machine object (REST and WebSocket): `machineId, name, status, currentOrderId, p
 productionRate, efficiency, temperature, costPerHour, costPerMeter, orderMachineCost, estimatedCompletion, runtimeToday`.
 `productionRate` is 0 unless `RUNNING`. A machine that finished its order goes `IDLE` but keeps `currentOrderId`.
 
+## Production controls: pause, resume, change machine, cancel
+
+Roles: the owner can do everything; the production manager can pause, resume, change machine and read history and the
+audit trail but not cancel; the QC worker can do none of these (403). The public tracking link has no controls.
+Every action is a conditional update on the state it expects, so of two simultaneous actions one gets `409`.
+History (machine sessions, production events, material, wages, inspections, costs) is append-only.
+
+| Method | Path | Notes |
+|---|---|---|
+| POST | `/api/orders/{id}/pause` | `{reason, notes?}`. Reasons: `MACHINE_BREAKDOWN, MAINTENANCE, MATERIAL_SHORTAGE, QUALITY_ISSUE, OPERATOR_UNAVAILABLE, MANUAL, OTHER`. Only when `stageStatus` is `IN_PROGRESS` (or `QC_PENDING`, see below). Sets `stageStatus: PAUSED`, closes the active session(s), sets the machine(s) `IDLE`, records `pausedBy`, `pausedAt`, `pauseReason`, `pauseNotes`. 409 "Only an in-progress order can be paused." |
+| POST | `/api/orders/{id}/resume` | `{machineId?}`. Only when `PAUSED` (409 "Cannot resume a cancelled order." for a cancelled one). Opens a **new** session on the paused machine, or on `machineId` (a reassignment). 409 if the machine is down, under maintenance or on another incomplete order |
+| POST | `/api/orders/{id}/change-machine` | `{newMachineId, reason, notes?}`. Only when `PAUSED` (409 "Order must be paused before changing machine"). The new machine must exist (404), differ from the current one, not be `DOWN`/`MAINTENANCE` and not be assigned to another incomplete order (409 "Selected machine is already assigned to another active production job."). The old machine is freed; resume afterwards to start the session |
+| POST | `/api/orders/{id}/cancel` | **Owner only.** `{reason, notes?}`. Reasons: `BUYER_CANCELLED, MATERIAL_ISSUE, PRODUCTION_DEFECT, MACHINE_LIMITATIONS, COMMERCIAL_DECISION, DUPLICATE_ORDER, OTHER`. Soft cancel: `status: CANCELLED`, sessions closed, machines freed, unused reserved yarn released, `cancelledBy/At`, `cancelReason`, `cancelNotes`, `cancelledAtStage`. 409 "Order is already cancelled." / dispatched orders cannot be cancelled |
+| GET | `/api/orders/{id}/machine-history` | Sessions in order: `sessionId, orderId, stage, machineId, startedAt, endedAt (null while active), status (ACTIVE\|ENDED), metresProduced, assignedBy, endedBy, endReason` |
+| GET | `/api/orders/{id}/available-machines` | Machines the order could move to (`machineId, name, status`) |
+| GET | `/api/orders/{id}/audit` | Owner and manager. Entries `auditId, event, orderId, actor, actorRole, stage, oldState, newState, machineId, reason, notes, createdAt`. Events: `ORDER_PAUSED, ORDER_RESUMED, MACHINE_CHANGED, ORDER_CANCELLED, QC_REQUEST_SUPERSEDED` |
+
+Machine sessions (`machineAssignments`): one record each time a machine works on an order stage. A session closes on pause,
+machine change, stage completion and cancellation; its `metresProduced` is taken from that machine's dated production
+events when it closes (for an active session it is computed live). 40 m on machine A and 60 m on machine B are reported
+per machine in `/api/machines/monthly-summary` and `/api/finance/month-end`.
+
+Gate rules. A `PAUSED` or `CANCELLED` order cannot advance, complete a stage, take an inspection or produce: the simulator and
+`POST /api/machines/{id}/readings` skip it (no metres, run hours or machine cost). `409`s: "Cannot advance while production
+is paused.", "Order is already cancelled.". A cancelled order also refuses attendance entries, yarn reservation,
+machine assignment, `PATCH` and dispatch. Existing inspections stay readable.
+
+QC safety. Pausing (or cancelling) while an inspection request is waiting (`QC_PENDING`, including the first-off check)
+closes that request as superseded (`pendingInspectionType` cleared, `QC_REQUEST_SUPERSEDED` audit entry); this is the one case
+where a `QC_PENDING` order can be paused. Each passed stage inspection stores `producedMetersAtInspection`; if more metres were
+produced afterwards, advancing is refused with `409 "QC must pass before this stage can be completed"` until a new inspection
+passes. Failed inspections keep the hold, corrective action and reinspection flow.
+
+Order fields added: `stageStatus: PAUSED`, `status: CANCELLED`, `pausedAt/By`, `pauseReason`, `pauseNotes`, `pausedMachines`,
+`resumedAt/By`, `previousStatus`, `cancelledAt/By`, `cancelReason`, `cancelNotes`, `cancelledAtStage`, `cancelledAtMeters`.
+Machine `status` also accepts `MAINTENANCE`.
+
+Cancelled orders in finance. `GET /api/finance/dashboard` returns `orders[]` without cancelled orders and `cancelledOrders[]` with
+them; each has `cancelled: true`, `provisional: true` (never completed revenue), `pendingAmount: 0` and a `cancellation` block:
+`estimatedOrderValue, earnedRevenue` (only the existing pro-rata accrual for produced metres)`, actualCostIncurred,
+recoverableMaterialValue, writeOffLoss, stoppedAtStage, producedMeters, cancelledAt, cancelledBy, reason`. Recoverable material is
+never assumed: only yarn explicitly returned through `PATCH /api/inventory/{batchId}` with
+`{quantityKg: <higher stock>, returnedFromOrderId: "ORD..."}` counts (409 unless the order is cancelled, and never more than
+the order consumed from that batch). `writeOffLoss = actualCostIncurred - recoverableMaterialValue`. `kpis.cancelledOrderLoss`
+totals it. `/api/finance/month-end` adds `cancelledOrders[]` and does not count them in `completedOrders`.
+
+Buyer tracking. A paused order adds `orderStatus: "PAUSED"` and `statusMessage: "Production temporarily paused"`; a cancelled
+one `orderStatus: "CANCELLED"`, `statusMessage: "Order cancelled"`, `dispatchStatus: NOT_DISPATCHED` and no expected date.
+No machine id, worker, QC note, cost or cancellation reason is ever included.
+
 ## Quality, passport, buyer, payments
 | Method | Path | Notes |
 |---|---|---|
